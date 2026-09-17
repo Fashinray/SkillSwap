@@ -1,311 +1,566 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import MarketingNav from '@/components/marketing/MarketingNav'
+import FeatureCard from '@/components/marketing/FeatureCard'
+import TestimonialCard from '@/components/marketing/TestimonialCard'
+
+const iconProps = {
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 2,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  className: 'w-6 h-6',
+}
+
+const icons = {
+  person: (
+    <svg {...iconProps}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+    </svg>
+  ),
+  hub: (
+    <svg {...iconProps}>
+      <circle cx="12" cy="12" r="2.5" />
+      <circle cx="5" cy="5" r="2" />
+      <circle cx="19" cy="5" r="2" />
+      <circle cx="5" cy="19" r="2" />
+      <circle cx="19" cy="19" r="2" />
+      <path d="M10 10.5L6.5 6.5M14 10.5l3.5-4M10 13.5l-3.5 4M14 13.5l3.5 4" />
+    </svg>
+  ),
+  swap: (
+    <svg {...iconProps}>
+      <path d="M4 8h14M14 4l4 4-4 4" />
+      <path d="M20 16H6M10 20l-4-4 4-4" />
+    </svg>
+  ),
+  clockCoin: (
+    <svg {...iconProps}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  ),
+  shieldLock: (
+    <svg {...iconProps}>
+      <path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3z" />
+      <rect x="9.5" y="12" width="5" height="4" rx="1" />
+      <path d="M10.5 12v-1.5a1.5 1.5 0 0 1 3 0V12" />
+    </svg>
+  ),
+  verifiedBadge: (
+    <svg {...iconProps}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 12.5l2.5 2.5L16 9" />
+    </svg>
+  ),
+  brainSparkle: (
+    <svg {...iconProps}>
+      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" />
+    </svg>
+  ),
+  videoCamera: (
+    <svg {...iconProps}>
+      <rect x="3" y="7" width="12" height="10" rx="2" />
+      <path d="M15 10.5l6-3v9l-6-3z" />
+    </svg>
+  ),
+  starTrophy: (
+    <svg {...iconProps}>
+      <path d="M8 4h8v4a4 4 0 0 1-8 0V4z" />
+      <path d="M8 5H5a2 2 0 0 0 3 3M16 5h3a2 2 0 0 1-3 3" />
+      <path d="M12 12v4" />
+      <rect x="9" y="16" width="6" height="2.5" rx="1" />
+    </svg>
+  ),
+}
 
 const steps = [
   {
-    step: '01',
-    icon: 'person',
-    title: 'Build Profile',
-    desc: 'List the skills you can teach and the skills you want to learn. Set your weekly availability.',
+    number: '1',
+    icon: icons.person,
+    title: 'Create Your Profile',
+    copy: 'Sign up with your OAU email. List the skills you can teach and the ones you want to learn. Submit your certificates and LinkedIn for admin verification.',
   },
   {
-    step: '02',
-    icon: 'hub',
+    number: '2',
+    icon: icons.hub,
     title: 'Get Matched',
-    desc: 'Our algorithm scores compatibility using skill overlap, reputation, and availability.',
+    copy: 'Our matching algorithm scores every candidate by skill compatibility, reputation, availability, and session history. You see ranked matches with percentage compatibility scores.',
   },
   {
-    step: '03',
-    icon: 'lock',
-    title: 'Book with Escrow',
-    desc: 'Both parties lock a credit deposit. It is returned automatically — no ghosting, no wasted time.',
+    number: '3',
+    icon: icons.swap,
+    title: 'Swap and Grow',
+    copy: 'Book a session. Both parties lock a small credit deposit (returned on completion). Teach over our integrated video call and chat. Submit a review. Earn credits. Build your reputation.',
+  },
+]
+
+const features = [
+  {
+    icon: icons.clockCoin,
+    title: 'Time Credit Economy',
+    copy: '1 hour of teaching = 1–3 credits depending on skill complexity. No money changes hands — ever. Credits circulate entirely within the student community.',
+    tag: 'Fair · Transparent',
   },
   {
-    step: '04',
-    icon: 'school',
-    title: 'Learn and Earn',
-    desc: 'Meet in the session room. Chat and video built in. Credits transfer automatically when done.',
+    icon: icons.shieldLock,
+    title: 'Escrow Commitment System',
+    copy: 'Both parties deposit credits before every session. Credits return automatically on completion. Ghosting costs the offender their deposit and harms their reputation.',
+    tag: 'Zero Ghosting',
+  },
+  {
+    icon: icons.verifiedBadge,
+    title: 'Admin-Verified Profiles',
+    copy: 'Upload your certificates, LinkedIn, GitHub, or portfolio. The Super Admin reviews and scores your skills — Beginner, Intermediate, or Expert — before you go live.',
+    tag: 'Trust Built In',
+  },
+  {
+    icon: icons.brainSparkle,
+    title: 'AI Teaching Evaluation',
+    copy: 'Optional: consent to AI evaluation after your session. GPT-4o-mini analyses your teaching transcript across 5 dimensions and gives you structured feedback to improve.',
+    tag: 'AI-Powered',
+  },
+  {
+    icon: icons.videoCamera,
+    title: 'Integrated Video and Chat',
+    copy: 'Live sessions happen inside SkillSwap — no Zoom, no WhatsApp. Real-time chat, WebRTC video call with TURN relay, file sharing, and a camera test before you start.',
+    tag: 'All In One Place',
+  },
+  {
+    icon: icons.starTrophy,
+    title: 'Reputation Engine',
+    copy: 'Your reputation score combines peer ratings (70%) and AI scores (30%). Top performers earn a Trusted Badge. Your verified proficiency level and no-show count are always visible.',
+    tag: 'Earn Your Status',
   },
 ]
 
-const whyPoints = [
-  { label: 'Structured', desc: 'Every session is scheduled, tracked, and confirmed by both parties.' },
-  { label: 'Accountable', desc: 'Credit escrow means ghosting has a real cost. Your reputation follows you.' },
-  { label: 'Fair', desc: 'Advanced skills earn more credits. Basic skills cost less. The economy is balanced.' },
-  { label: 'Free', desc: 'No subscriptions, no payment, no Paystack. Just your time and expertise.' },
+const skillRows = [
+  ['Python', 'Data Analysis', 'Graphic Design'],
+  ['Public Speaking', 'French Language', 'UI/UX'],
+  ['Mathematics', 'Video Editing', 'CV Writing'],
+  ['React Development', 'Photography', 'Excel'],
 ]
 
-const categories = [
-  { icon: 'school', title: 'Academic', desc: 'Python, Data Analysis, Statistics, Web Dev, Machine Learning' },
-  { icon: 'palette', title: 'Creative', desc: 'Graphic Design, Video Editing, UI/UX, Music Production, Animation' },
-  { icon: 'lightbulb', title: 'Practical Life', desc: 'Public Speaking, Entrepreneurship, Financial Literacy, Languages' },
-  { icon: 'auto_awesome', title: 'AI-Evaluated', desc: 'Optional AI scoring of teaching quality across 5 dimensions' },
+const comparisonRows = [
+  { without: 'No commitment — anyone can ghost', withUs: 'Credit escrow enforces attendance' },
+  { without: 'Self-reported skills — no verification', withUs: 'Admin-verified with proficiency scores' },
+  { without: 'No quality measurement', withUs: 'Peer reviews + AI transcript evaluation' },
+  { without: 'Arrangements fall apart', withUs: 'Structured session with in-platform video' },
+  { without: 'No accountability', withUs: 'Reputation score, no-show record, Trusted Badge' },
+  { without: 'Paid platforms cost money', withUs: 'Free — time credits only' },
 ]
 
-const tiers = [
-  { tier: 'Basic', credits: '1 credit / hour', examples: 'Microsoft Office, Study Skills, Cooking' },
-  { tier: 'Intermediate', credits: '2 credits / hour', examples: 'Python, Graphic Design, Public Speaking' },
-  { tier: 'Advanced', credits: '3 credits / hour', examples: 'Machine Learning, Brand Design, Negotiation' },
+const testimonials = [
+  {
+    quote:
+      'I taught Python to three people and learned Graphic Design in return. The escrow system meant everyone showed up — no ghosting at all.',
+    name: 'Adebayo T.',
+    course: '400 Level, Computer Science',
+  },
+  {
+    quote:
+      "Having the Admin verify my skills and give me an 'Expert' badge for Data Analysis made people trust me immediately. Got matched within a day of joining.",
+    name: 'Ngozi A.',
+    course: '300 Level, Statistics',
+  },
+  {
+    quote:
+      "The video call is built right into the platform. No WhatsApp, no Zoom, no 'my internet cut' excuses. The session just works.",
+    name: 'Musa K.',
+    course: '500 Level, Electrical Engineering',
+  },
 ]
 
 export default async function HomePage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (user) redirect('/dashboard')
 
   return (
-    <div className="min-h-screen bg-[#f8f9ff]">
-      {/* Nav */}
-      <nav className="glass-header sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-[#4f46e5] rounded-lg flex items-center justify-center">
-              <span className="material-symbols-outlined text-white text-lg">swap_horiz</span>
-            </div>
-            <span className="text-lg font-bold text-[#0b1c30] font-['Geist']">SkillSwap</span>
-          </div>
+    <div className="min-h-screen bg-white">
+      <MarketingNav />
 
-          <div className="hidden sm:flex items-center gap-8">
-            <a href="#how-it-works" className="text-sm text-[#464555] hover:text-[#0b1c30] font-medium transition-colors">
-              How it Works
-            </a>
-            <a href="#categories" className="text-sm text-[#464555] hover:text-[#0b1c30] font-medium transition-colors">
-              Browse Skills
-            </a>
-          </div>
+      {/* SECTION 2 — HERO */}
+      <section className="bg-[#F5F3FF]">
+        <div className="max-w-7xl mx-auto px-6 py-12 lg:py-20">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <span className="inline-flex items-center px-4 py-1.5 rounded-full bg-white text-[#4F46E5] text-xs font-semibold border border-indigo-100">
+                OAU Campus · No Money Required
+              </span>
 
-          <div className="flex items-center gap-3">
-            <Link href="/login"
-              className="text-sm text-[#464555] hover:text-[#0b1c30] font-medium px-3 py-2 rounded-lg hover:bg-[#eff4ff] transition-colors font-['Geist']">
-              Log In
-            </Link>
-            <Link href="/register"
-              className="text-sm bg-[#4f46e5] text-white font-semibold font-['Geist'] px-4 py-2 rounded-lg hover:bg-[#3525cd] transition-colors">
-              Get Started
-            </Link>
-          </div>
-        </div>
-      </nav>
+              <h1 className="mt-6 text-[38px] leading-[1.1] lg:text-[56px] font-extrabold text-[#0F1729] font-['Geist']">
+                Exchange Skills.
+                <br />
+                Earn Credits.
+                <br />
+                Build Reputation.
+              </h1>
 
-      {/* Hero */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-24">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#e5eeff] border border-[#c7c4d8] text-xs font-medium text-[#3525cd] mb-8">
-              <span className="material-symbols-outlined text-sm">verified</span>
-              Academic Trust · Community Vitality
-            </div>
-
-            <h1 className="text-4xl sm:text-5xl font-extrabold text-[#0b1c30] leading-tight font-['Geist']">
-              Exchange Skills.<br />
-              Earn Credits.<br />
-              Build Reputation.
-            </h1>
-
-            <p className="mt-6 text-lg text-[#464555] leading-relaxed max-w-lg">
-              SkillSwap is a peer-to-peer skill exchange platform for university students.
-              Trade skills using time credits — earn by teaching, spend by learning.
-              Completely free, fully accountable.
-            </p>
-
-            <div className="mt-10 flex flex-col sm:flex-row gap-4">
-              <Link href="/register"
-                className="px-8 py-3.5 bg-[#4f46e5] text-white font-semibold font-['Geist'] rounded-xl hover:bg-[#3525cd] transition-colors text-sm shadow-lg shadow-[#4f46e5]/25 flex items-center justify-center gap-2">
-                Start exchanging skills
-                <span className="material-symbols-outlined text-lg">arrow_forward</span>
-              </Link>
-              <Link href="/login"
-                className="px-8 py-3.5 bg-white text-[#0b1c30] font-semibold font-['Geist'] rounded-xl border border-[#c7c4d8] hover:bg-[#eff4ff] transition-colors text-sm">
-                Sign in to your account
-              </Link>
-            </div>
-
-            <div className="mt-10 flex items-center gap-4">
-              <div className="flex -space-x-3">
-                {['A', 'E', 'C', 'T'].map((l, i) => (
-                  <div key={i} className="w-9 h-9 rounded-full border-2 border-white bg-[#4f46e5] flex items-center justify-center text-white text-xs font-bold">
-                    {l}
-                  </div>
-                ))}
-                <div className="w-9 h-9 rounded-full border-2 border-white bg-[#e5eeff] flex items-center justify-center text-[#4f46e5] text-xs font-bold">
-                  +16
-                </div>
-              </div>
-              <p className="text-sm text-[#464555] font-['Geist'] font-medium">
-                20+ OAU students already swapping
+              <p className="mt-6 text-[18px] text-[#64748B] leading-relaxed max-w-lg">
+                Teach what you know. Learn what you need. SkillSwap connects OAU students in
+                structured, accountable skill sessions — powered by time credits, not money.
               </p>
+
+              <div className="mt-8 flex flex-col sm:flex-row gap-4">
+                <Link
+                  href="/register"
+                  className="px-8 py-3.5 bg-[#4F46E5] text-white font-semibold rounded-xl hover:bg-[#3f38c4] transition-colors text-sm text-center"
+                >
+                  Start Swapping →
+                </Link>
+                <Link
+                  href="/match"
+                  className="px-8 py-3.5 bg-transparent text-[#0F1729] font-semibold rounded-xl border border-slate-300 hover:bg-white transition-colors text-sm text-center"
+                >
+                  Browse Skills
+                </Link>
+              </div>
+
+              <div className="mt-10 flex items-center gap-3">
+                <div className="flex -space-x-3">
+                  {['A', 'C', 'M'].map((letter) => (
+                    <div
+                      key={letter}
+                      className="w-9 h-9 rounded-full border-2 border-[#F5F3FF] bg-[#4F46E5] flex items-center justify-center text-white text-xs font-bold"
+                    >
+                      {letter}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-sm text-[#64748B] font-medium">
+                  Join 200+ students already swapping on campus
+                </p>
+              </div>
+            </div>
+
+            {/* Floating card mockup */}
+            <div className="relative hidden md:block h-[420px]">
+              <div className="absolute top-0 right-0 w-64 bg-white rounded-2xl shadow-lg p-4">
+                <span className="inline-block px-2.5 py-1 rounded-full bg-[#EEF2FF] text-[#4F46E5] text-xs font-bold">
+                  98% Match
+                </span>
+                <div className="mt-3 flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-[#4F46E5] flex items-center justify-center text-white text-xs font-bold">
+                    A
+                  </div>
+                  <span className="text-sm font-semibold text-[#0F1729]">Amaka O.</span>
+                </div>
+                <p className="mt-3 text-xs text-[#64748B]">
+                  Teaching: <span className="text-[#0F1729] font-medium">Python Development</span>
+                </p>
+                <p className="mt-1 text-xs text-[#64748B]">
+                  Wants to learn: <span className="text-[#0F1729] font-medium">Graphic Design</span>
+                </p>
+                <button className="mt-3 w-full py-2 rounded-lg bg-[#4F46E5] text-white text-xs font-semibold">
+                  Request Session
+                </button>
+              </div>
+
+              <div className="absolute top-40 left-2 w-60 bg-white rounded-2xl shadow-lg p-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#006E4B]" />
+                  <span className="text-sm font-semibold text-[#0F1729]">Session Active</span>
+                </div>
+                <p className="mt-3 text-xs text-[#64748B]">Escrow: 2 credits locked</p>
+                <p className="mt-2 text-xs text-[#64748B]">Chat &nbsp;•&nbsp; Video &nbsp;•&nbsp; Confirm</p>
+              </div>
+
+              <div className="absolute bottom-0 right-8 w-52 bg-white rounded-2xl shadow-lg p-4">
+                <p className="text-xs text-[#64748B]">Credit balance</p>
+                <p className="mt-1 text-3xl font-bold text-[#4F46E5] font-['Geist']">14 cr</p>
+                <p className="mt-1 text-xs text-[#006E4B] font-medium">Earned today: +2</p>
+              </div>
             </div>
           </div>
-
-          {/* Floating glass cards */}
-          <div className="relative h-80 hidden lg:block">
-            <div className="glass-card absolute top-4 left-8 p-5 rounded-2xl w-56 animate-float"
-              style={{ animationDelay: '0s' }}>
-              <div className="bg-[#4f46e5]/20 p-2 rounded-lg inline-block mb-3">
-                <span className="material-symbols-outlined text-[#4f46e5] text-lg">code</span>
-              </div>
-              <div className="text-sm font-semibold text-[#0b1c30] font-['Geist']">Python Mastery</div>
-              <div className="flex items-center gap-1 mt-1.5">
-                <span className="material-symbols-outlined text-[#006e4b] text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
-                <span className="text-xs text-[#464555]">Intermediate · 2 cr/hr</span>
-              </div>
-            </div>
-
-            <div className="glass-card absolute bottom-8 right-4 p-5 rounded-2xl w-60 animate-float"
-              style={{ animationDelay: '1.5s' }}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-[#464555] uppercase tracking-wider font-['Geist'] font-medium">Credit Wallet</span>
-                <span className="material-symbols-outlined text-[#4f46e5] text-lg">account_balance_wallet</span>
-              </div>
-              <div className="text-3xl font-bold text-[#4f46e5] font-['Geist']">24</div>
-              <div className="text-xs text-[#006e4b] mt-1 flex items-center gap-1">
-                <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>trending_up</span>
-                +5 this week
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Stats */}
-        <div className="mt-16 grid grid-cols-3 gap-8 max-w-lg">
-          {[
-            { value: '33+', label: 'Skills available' },
-            { value: '₦0', label: 'Cost to join' },
-            { value: '5', label: 'Starter credits' },
-          ].map((stat) => (
-            <div key={stat.label}>
-              <div className="text-3xl font-bold text-[#4f46e5] font-['Geist']">{stat.value}</div>
-              <div className="text-xs text-[#464555] mt-1">{stat.label}</div>
-            </div>
-          ))}
         </div>
       </section>
 
-      {/* How it Works */}
-      <section id="how-it-works" className="bg-white py-20 border-y border-[#e5eeff]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold text-[#0b1c30] font-['Geist']">How SkillSwap works</h2>
-            <p className="mt-3 text-[#464555] max-w-xl mx-auto">
-              A structured system that makes peer learning fair, accountable, and easy.
-            </p>
+      {/* SECTION 3 — HOW IT WORKS */}
+      <section id="how-it-works" className="bg-white py-20">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center">
+            <h2 className="text-3xl font-bold text-[#0F1729] font-['Geist']">How SkillSwap Works</h2>
+            <p className="mt-3 text-[#64748B]">Three steps from zero to skill exchange</p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {steps.map((item) => (
-              <div key={item.step} className="bg-[#f8f9ff] rounded-2xl p-6 border border-[#e5eeff]">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="w-10 h-10 bg-[#e5eeff] rounded-xl flex items-center justify-center">
-                    <span className="material-symbols-outlined text-[#4f46e5] text-xl">{item.icon}</span>
-                  </div>
-                  <span className="text-2xl font-bold text-[#c7c4d8] font-['Geist']">{item.step}</span>
+          <div className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-10">
+            {steps.map((step) => (
+              <div key={step.number} className="text-center md:text-left">
+                <div className="inline-flex items-center gap-3">
+                  <span className="w-9 h-9 rounded-full bg-[#4F46E5] text-white text-sm font-bold flex items-center justify-center">
+                    {step.number}
+                  </span>
+                  <span className="text-[#4F46E5]">{step.icon}</span>
                 </div>
-                <h3 className="font-semibold text-[#0b1c30] mb-2 font-['Geist']">{item.title}</h3>
-                <p className="text-sm text-[#464555] leading-relaxed">{item.desc}</p>
+                <h3 className="mt-4 text-lg font-semibold text-[#0F1729] font-['Geist']">{step.title}</h3>
+                <p className="mt-2 text-sm text-[#64748B] leading-relaxed">{step.copy}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Why not WhatsApp */}
-      <section id="categories" className="py-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-            <div>
-              <h2 className="text-3xl font-bold text-[#0b1c30] font-['Geist']">
-                Why not just use WhatsApp?
-              </h2>
-              <p className="mt-4 text-[#464555] leading-relaxed">
-                WhatsApp groups are unstructured, unaccountable, and unfair.
-                Someone teaches you for an hour and you ghost them. No consequence.
-                SkillSwap changes that.
-              </p>
-              <ul className="mt-8 space-y-4">
-                {whyPoints.map((item) => (
-                  <li key={item.label} className="flex items-start gap-3">
-                    <div className="w-5 h-5 bg-[#67f4b7]/40 rounded-full flex items-center justify-center mt-0.5 shrink-0">
-                      <span className="material-symbols-outlined text-[#006e4b] text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>check</span>
-                    </div>
-                    <div>
-                      <span className="font-semibold text-[#0b1c30] font-['Geist']">{item.label} — </span>
-                      <span className="text-[#464555] text-sm">{item.desc}</span>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
+      {/* SECTION 4 — KEY FEATURES */}
+      <section id="features" className="bg-[#F8F9FF] py-20">
+        <div className="max-w-7xl mx-auto px-6">
+          <h2 className="text-center text-3xl font-bold text-[#0F1729] font-['Geist']">
+            Everything You Need to Learn and Teach
+          </h2>
 
-            <div className="grid grid-cols-2 gap-4">
-              {categories.map((card) => (
-                <div key={card.title} className="rounded-2xl border border-[#e5eeff] bg-white p-5 card-shadow">
-                  <div className="w-10 h-10 bg-[#eff4ff] rounded-xl flex items-center justify-center mb-3">
-                    <span className="material-symbols-outlined text-[#4f46e5] text-lg">{card.icon}</span>
-                  </div>
-                  <h3 className="font-semibold text-[#0b1c30] text-sm mb-1 font-['Geist']">{card.title}</h3>
-                  <p className="text-xs text-[#464555] leading-relaxed">{card.desc}</p>
+          <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {features.map((feature) => (
+              <FeatureCard
+                key={feature.title}
+                icon={feature.icon}
+                title={feature.title}
+                description={feature.copy}
+                tag={feature.tag}
+              />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* SECTION 5 — WHAT IS A SKILL? */}
+      <section id="for-students" className="bg-white py-20">
+        <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+          <div>
+            <h2 className="text-3xl font-bold text-[#0F1729] font-['Geist']">
+              What counts as a skill on SkillSwap?
+            </h2>
+            <p className="mt-4 text-[#64748B] leading-relaxed max-w-md">
+              A skill is any practical ability you can teach another student — whether you
+              learned it in class, through personal projects, online courses, or real-world
+              experience. If you can teach it to someone else, it counts.
+            </p>
+          </div>
+
+          <div>
+            <div className="space-y-3">
+              {skillRows.map((row, i) => (
+                <div key={i} className="flex flex-wrap gap-3">
+                  {row.map((skill) => (
+                    <span
+                      key={skill}
+                      className="px-4 py-2 rounded-full border border-indigo-200 bg-[#F5F3FF] text-[#4F46E5] text-sm font-medium"
+                    >
+                      {skill}
+                    </span>
+                  ))}
                 </div>
               ))}
             </div>
+            <p className="mt-6 text-sm text-[#64748B]">
+              Academic · Technical · Creative · Soft Skills · Languages · Professional
+              Development — all welcome.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* Credit system */}
-      <section className="py-20" style={{ background: 'linear-gradient(135deg, #3525cd 0%, #4f46e5 50%, #6b38d4 100%)' }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center">
-          <h2 className="text-3xl font-bold text-white font-['Geist']">The time-credit economy</h2>
-          <p className="mt-3 text-white/80 max-w-xl mx-auto">
-            Credits represent teaching time. Earn by teaching, spend by learning.
-            No money ever changes hands.
-          </p>
-          <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-3xl mx-auto">
-            {tiers.map((tier) => (
-              <div key={tier.tier} className="glass-card rounded-2xl p-6 text-left" style={{ background: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.2)' }}>
-                <div className="inline-block px-2 py-0.5 rounded-full text-xs font-bold text-white bg-white/20 mb-4 font-['Geist']">
-                  {tier.tier}
+      {/* SECTION 6 — TRUST AND ACCOUNTABILITY */}
+      <section className="bg-[#F5F3FF] py-20">
+        <div className="max-w-4xl mx-auto px-6">
+          <h2 className="text-center text-3xl font-bold text-[#0F1729] font-['Geist']">
+            Why SkillSwap is Different from WhatsApp Groups
+          </h2>
+
+          <div className="mt-12 rounded-2xl border border-slate-200 overflow-hidden">
+            <div className="grid grid-cols-2">
+              <div className="px-5 py-3 bg-red-50 border-b border-slate-200 text-sm font-semibold text-[#0F1729]">
+                Without SkillSwap
+              </div>
+              <div className="px-5 py-3 bg-emerald-50 border-b border-slate-200 text-sm font-semibold text-[#0F1729]">
+                With SkillSwap
+              </div>
+            </div>
+            {comparisonRows.map((row) => (
+              <div key={row.without} className="grid grid-cols-2 border-b border-slate-200 last:border-b-0">
+                <div className="px-5 py-4 bg-red-50/50 text-sm text-[#0F1729] flex items-start gap-2">
+                  <span className="text-red-500">✕</span>
+                  <span>{row.without}</span>
                 </div>
-                <div className="text-2xl font-bold text-white mb-1 font-['Geist']">{tier.credits}</div>
-                <p className="text-xs text-white/80 leading-relaxed">{tier.examples}</p>
+                <div className="px-5 py-4 bg-emerald-50/50 text-sm text-[#0F1729] flex items-start gap-2">
+                  <span className="text-[#006E4B]">✓</span>
+                  <span>{row.withUs}</span>
+                </div>
               </div>
             ))}
           </div>
-          <p className="mt-8 text-white/80 text-sm">
-            Every new student gets <strong className="text-white">5 free starter credits</strong> on joining.
-          </p>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-20">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 text-center">
-          <h2 className="text-3xl font-bold text-[#0b1c30] font-['Geist']">
-            Ready to start swapping skills?
+      {/* SECTION 7 — LIVE ACTIVITY FEED */}
+      <section className="bg-[#0F1729] py-20">
+        <div className="max-w-4xl mx-auto px-6">
+          <h2 className="text-center text-3xl font-bold text-white font-['Geist']">
+            Happening Now on Campus
           </h2>
-          <p className="mt-4 text-[#464555]">
-            Join OAU students already exchanging knowledge on SkillSwap.
-            It takes 2 minutes to set up your profile.
-          </p>
-          <Link href="/register"
-            className="mt-8 inline-flex items-center gap-2 px-8 py-3.5 bg-[#4f46e5] text-white font-semibold font-['Geist'] rounded-xl hover:bg-[#3525cd] transition-colors shadow-lg shadow-[#4f46e5]/25">
-            Create your free account
-            <span className="material-symbols-outlined text-lg">arrow_forward</span>
-          </Link>
+          <p className="mt-3 text-center text-slate-400">Real student exchanges happening every day</p>
+
+          <div className="mt-12 space-y-4">
+            <div className="flex items-center gap-4 bg-white/5 rounded-xl p-4">
+              <span className="w-10 h-10 rounded-full bg-[#6B38D4] flex items-center justify-center text-white text-sm font-bold shrink-0">
+                E
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white">
+                  Emeka N. is teaching Python Development to Fatima A.
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">1 session active</p>
+              </div>
+              <span className="shrink-0 px-3 py-1 rounded-full bg-white/10 text-xs text-slate-200">
+                2 cr locked
+              </span>
+            </div>
+
+            <div className="flex items-center gap-4 bg-white/5 rounded-xl p-4">
+              <span className="w-10 h-10 rounded-full bg-[#006E4B] flex items-center justify-center text-white text-sm font-bold shrink-0">
+                C
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white">Chisom O. completed a swap with Tolu F.</p>
+                <p className="text-xs text-slate-400 mt-0.5">Graphic Design</p>
+              </div>
+              <div className="shrink-0 flex items-center gap-2">
+                <div className="flex gap-0.5 text-amber-400">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <svg key={i} className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                      <path d="M10 1.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L10 14.9l-5.2 2.8 1-5.9L1.5 7.7l5.9-.8L10 1.5z" />
+                    </svg>
+                  ))}
+                </div>
+                <span className="text-xs text-slate-400">Review submitted</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 bg-white/5 rounded-xl p-4">
+              <span className="w-10 h-10 rounded-full bg-[#4F46E5] flex items-center justify-center text-white text-sm font-bold shrink-0">
+                Y
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-white">New verified teacher joined: Yusuf B.</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Intermediate Excel · Advanced Data Analysis
+                </p>
+              </div>
+              <span className="shrink-0 px-3 py-1 rounded-full bg-emerald-500/10 text-xs text-emerald-400">
+                ✓ Admin Verified
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-10 rounded-2xl bg-[#4F46E5] p-8 flex flex-col sm:flex-row items-center justify-between gap-6">
+            <p className="text-white text-sm sm:text-base text-center sm:text-left">
+              Ready to swap? Your first session deposit is returned on completion. Zero risk.
+            </p>
+            <Link
+              href="/register"
+              className="shrink-0 px-6 py-3 bg-white text-[#4F46E5] font-semibold rounded-xl hover:bg-slate-100 transition-colors text-sm whitespace-nowrap"
+            >
+              Create Your Profile →
+            </Link>
+          </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-[#e5eeff] py-8">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-[#464555]">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-[#4f46e5] rounded-md flex items-center justify-center">
-              <span className="material-symbols-outlined text-white text-sm">swap_horiz</span>
-            </div>
-            <span className="font-medium text-[#0b1c30] font-['Geist']">SkillSwap</span>
+      {/* SECTION 8 — SOCIAL PROOF / TESTIMONIALS */}
+      <section className="bg-white py-20">
+        <div className="max-w-7xl mx-auto px-6">
+          <h2 className="text-center text-3xl font-bold text-[#0F1729] font-['Geist']">
+            What Students Say
+          </h2>
+
+          <div className="mt-14 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {testimonials.map((t) => (
+              <TestimonialCard key={t.name} quote={t.quote} name={t.name} course={t.course} />
+            ))}
           </div>
-          <p>Final year project · Fadare Tolulope Timothy · CSC/2019/137 · OAU Ile-Ife</p>
-          <p>Supervised by Prof. Awoyelu</p>
+        </div>
+      </section>
+
+      {/* SECTION 9 — FINAL CTA */}
+      <section
+        className="py-20"
+        style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #6B38D4 100%)' }}
+      >
+        <div className="max-w-2xl mx-auto px-6 text-center">
+          <h2 className="text-[40px] leading-tight font-bold text-white font-['Geist']">
+            Join the Skill Economy at OAU
+          </h2>
+          <p className="mt-4 text-white/80">
+            Stop paying for courses. Start learning from peers and building your real-world
+            reputation. Sign up free — no card required.
+          </p>
+
+          <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              href="/register"
+              className="px-8 py-3.5 bg-white text-[#4F46E5] font-semibold rounded-xl hover:bg-slate-100 transition-colors text-sm w-full sm:w-auto"
+            >
+              Get Started for Free →
+            </Link>
+            <Link
+              href="/login"
+              className="px-8 py-3.5 bg-transparent text-white font-semibold rounded-xl border border-white/60 hover:bg-white/10 transition-colors text-sm w-full sm:w-auto"
+            >
+              Log In
+            </Link>
+          </div>
+
+          <p className="mt-6 text-xs text-white/70">No money. No subscription. Time credits only.</p>
+        </div>
+      </section>
+
+      {/* SECTION 10 — FOOTER */}
+      <footer className="bg-[#1E3A5F] py-16">
+        <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+          <div>
+            <span className="text-xl font-bold text-white font-['Geist']">SkillSwap</span>
+            <p className="mt-3 text-sm text-slate-400 leading-relaxed max-w-xs">
+              The peer skill exchange platform for OAU students. Time credits, not money.
+            </p>
+          </div>
+
+          <div>
+            <h4 className="text-sm font-semibold text-white">Platform</h4>
+            <ul className="mt-4 space-y-2.5 text-sm text-slate-400">
+              <li><Link href="#how-it-works" className="hover:text-white transition-colors">How It Works</Link></li>
+              <li><Link href="/match" className="hover:text-white transition-colors">Browse Skills</Link></li>
+              <li><Link href="#features" className="hover:text-white transition-colors">Features</Link></li>
+              <li><span className="text-slate-500">Leaderboard (future)</span></li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="text-sm font-semibold text-white">Community</h4>
+            <ul className="mt-4 space-y-2.5 text-sm text-slate-400">
+              <li><span className="hover:text-white transition-colors cursor-default">About SkillSwap</span></li>
+              <li><Link href="#for-students" className="hover:text-white transition-colors">For Students</Link></li>
+              <li><span className="hover:text-white transition-colors cursor-default">Trust and Safety</span></li>
+              <li><span className="hover:text-white transition-colors cursor-default">Privacy Policy</span></li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="text-sm font-semibold text-white">Support</h4>
+            <ul className="mt-4 space-y-2.5 text-sm text-slate-400">
+              <li><span className="text-slate-500">Help Centre (future)</span></li>
+              <li><span className="hover:text-white transition-colors cursor-default">Contact</span></li>
+              <li><span className="hover:text-white transition-colors cursor-default">Terms of Service</span></li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-6 mt-12 pt-8 border-t border-white/10 text-center text-xs text-slate-500">
+          © 2025 SkillSwap · Built for OAU Students · Department of Computer Science and Engineering
         </div>
       </footer>
     </div>

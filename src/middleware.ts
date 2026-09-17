@@ -31,8 +31,8 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
-  const publicPaths = ['/login', '/register', '/auth/callback', '/auth/verify', '/auth/confirm']
-  const isPublicPath = publicPaths.some((p) => pathname.startsWith(p))
+  const publicPaths = ['/', '/login', '/register', '/auth/callback', '/auth/verify', '/auth/confirm']
+  const isPublicPath = publicPaths.some((p) => (p === '/' ? pathname === '/' : pathname.startsWith(p)))
   // API routes handle their own auth and return a JSON 401/403 — redirecting
   // them to the /login HTML page here would mask that behind a 200 instead.
   const isApiPath = pathname.startsWith('/api/')
