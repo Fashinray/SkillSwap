@@ -59,3 +59,15 @@ body {
   background: #c7c4d8;
   border-radius: 10px;
 }
+
+/* iOS safe area support */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Prevent content hiding behind bottom nav on mobile */
+@media (max-width: 768px) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

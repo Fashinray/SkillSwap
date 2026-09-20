@@ -83,8 +83,8 @@ export default function SessionCard({
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span
               className={`text-xs px-2 py-0.5 rounded-full font-medium ${
@@ -127,12 +127,12 @@ export default function SessionCard({
         </div>
 
         {isActive && (
-          <div className="flex flex-col gap-2 items-end shrink-0">
+          <div className="flex flex-col gap-2 items-stretch sm:items-end shrink-0">
             {!myConfirmed && (
               <button
                 onClick={handleConfirm}
                 disabled={loading === 'confirm'}
-                className="text-sm px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                className="w-full sm:w-auto text-sm px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
               >
                 {loading === 'confirm' ? '...' : 'Confirm Complete'}
               </button>
@@ -140,7 +140,7 @@ export default function SessionCard({
             <button
               onClick={handleCancel}
               disabled={loading === 'cancel'}
-              className="text-sm px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              className="w-full sm:w-auto text-sm px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 disabled:opacity-50"
             >
               {loading === 'cancel' ? '...' : 'Cancel'}
             </button>

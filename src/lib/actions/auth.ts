@@ -4,12 +4,19 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { isValidRegistrationEmail } from '@/lib/config/features'
 
 export async function signUp(formData: FormData) {
   const supabase = await createClient()
   const email = formData.get('email') as string
   const password = formData.get('password') as string
   const fullName = formData.get('fullName') as string
+
+  if (!isValidRegistrationEmail(email)) {
+    return {
+      error: 'Registration is restricted to OAU students. Please use your @oauife.edu.ng email address.',
+    }
+  }
 
   // Emails whose account was previously deleted (e.g. by an admin) are
   // permanently blocked from re-registering, so starter credits can't be
@@ -37,7 +44,14 @@ export async function signUp(formData: FormData) {
   })
 
   if (error) {
-    console.error('signUp failed', error.name, error.status, error.message)
+    // Full dump: AuthError's own fields don't always show up via plain
+    // string interpolation (e.g. `code` on newer supabase-js, or a nested
+    // `cause`), so log every own property plus the raw object.
+    console.error(
+      '[signUp] Supabase auth.signUp failed for', email, '\n',
+      JSON.stringify(error, Object.getOwnPropertyNames(error), 2),
+      '\nraw error object:', error,
+    )
     // AuthRetryableFetchError (5xx from the Auth server, e.g. the email
     // provider failing or its send-rate limit being hit) carries a
     // non-descriptive message like "{}" that must not reach the UI as-is.

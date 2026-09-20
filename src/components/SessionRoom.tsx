@@ -6,6 +6,7 @@ import { confirmCompletion, cancelSession, fileDispute, uploadSessionFile } from
 import Link from 'next/link'
 import PeerReviewForm from '@/components/PeerReviewForm'
 import AIEvaluationPanel from '@/components/AIEvaluationPanel'
+import CameraTest from '@/components/CameraTest'
 
 interface Message {
   msg_id: string
@@ -98,6 +99,7 @@ export default function SessionRoom({
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [audioOnly, setAudioOnly] = useState(false)
+  const [callError, setCallError] = useState('')
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
@@ -118,6 +120,12 @@ export default function SessionRoom({
   useEffect(() => {
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = localStream
+      if (localStream) {
+        // Force play — needed on some mobile browsers. The muted +
+        // playsInline attributes are what actually make autoplay work;
+        // this just nudges browsers that don't autoplay reliably on their own.
+        localVideoRef.current.play().catch(() => {})
+      }
     }
   }, [localStream, callState])
 
@@ -294,23 +302,117 @@ export default function SessionRoom({
     }
   }
 
+  // Robust local media acquisition — handles permission pre-checks, mobile
+  // vs desktop constraint tiers, and graceful degradation (audio-only
+  // fallback, relaxed-constraint retry) with a specific, actionable error
+  // message per failure mode. Returns the stream, or null after having
+  // already set callError with the reason.
+  async function acquireLocalStream(): Promise<MediaStream | null> {
+    setCallError('')
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCallError('Your browser does not support video calls. Please use Chrome or Safari.')
+      return null
+    }
+
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+
+    // Check camera permission status if the Permissions API is available
+    if (navigator.permissions) {
+      try {
+        const camStatus = await navigator.permissions.query({
+          name: 'camera' as PermissionName,
+        })
+        if (camStatus.state === 'denied') {
+          setCallError(
+            isIOS
+              ? 'Camera access is blocked. Go to Settings → Safari → Camera and allow access, then reload.'
+              : 'Camera access is blocked. Click the camera icon in your browser address bar to allow access, then reload.'
+          )
+          return null
+        }
+      } catch {
+        // Permissions API not available on this browser — proceed anyway
+      }
+    }
+
+    const videoConstraints = audioOnly
+      ? false
+      : isMobile
+      ? {
+          facingMode: { ideal: 'user' },
+          width: { ideal: 640, max: 1280 },
+          height: { ideal: 480, max: 720 },
+        }
+      : {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        }
+
+    const constraints: MediaStreamConstraints = {
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 44100,
+      },
+      video: videoConstraints,
+    }
+
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints)
+    } catch (err: any) {
+      console.error('getUserMedia error:', err.name, err.message)
+
+      // Try audio-only fallback if video failed
+      if (!audioOnly && err.name !== 'NotAllowedError') {
+        try {
+          const audioOnlyStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true },
+            video: false,
+          })
+          setCallError('Camera not available — connected with audio only.')
+          return audioOnlyStream
+        } catch {
+          // Audio also failed — fall through to error
+        }
+      }
+
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCallError(
+          isIOS
+            ? 'Camera permission denied. Go to Settings → Safari → Camera and set to Allow, then reload this page.'
+            : 'Camera permission denied. Click the camera icon in your browser address bar and allow access, then reload.'
+        )
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        setCallError('No camera found on this device. You can still use audio only.')
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        setCallError('Camera is being used by another app. Please close other apps using the camera and try again.')
+      } else if (err.name === 'OverconstrainedError') {
+        try {
+          return await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: isMobile ? { facingMode: 'user' } : true,
+          })
+        } catch {
+          setCallError('Could not access camera. Please check your device settings.')
+        }
+      } else {
+        setCallError(`Camera error: ${err.message ?? 'Unknown error'}. Please reload and try again.`)
+      }
+      return null
+    }
+  }
+
   async function startCall(isInitiator: boolean) {
     const iceConfig = await getIceConfig()
     const pc = new RTCPeerConnection(iceConfig)
     peerConnectionRef.current = pc
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: !audioOnly,
-        audio: true,
-      })
-      setLocalStream(stream)
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream))
-    } catch (e) {
-      console.error('Media access error', e)
-      setActionMsg('Could not access camera/microphone. Check permissions.')
-      return
-    }
+    const stream = await acquireLocalStream()
+    if (!stream) return
+    setLocalStream(stream)
+    stream.getTracks().forEach((track) => pc.addTrack(track, stream))
 
     pc.ontrack = (event) => {
       const remote = event.streams[0]
@@ -525,6 +627,13 @@ export default function SessionRoom({
         )}
       </div>
 
+      {callError && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-2">
+          <span className="material-symbols-outlined text-base shrink-0">error</span>
+          {callError}
+        </div>
+      )}
+
       {callState === 'in-call' && (
         <div className="space-y-2">
           <div
@@ -536,13 +645,15 @@ export default function SessionRoom({
               ref={remoteVideoRef}
               autoPlay
               playsInline
+              controls={false}
               className="w-full h-full object-contain bg-black"
             />
             <video
               ref={localVideoRef}
               autoPlay
-              playsInline
               muted
+              playsInline
+              controls={false}
               className="absolute bottom-2 right-2 w-24 h-16 object-cover rounded-lg border-2 border-white"
             />
           </div>
@@ -627,7 +738,8 @@ export default function SessionRoom({
       )}
 
       {callState === 'idle' && isActive && (
-        <div className="space-y-2">
+        <div className="space-y-3">
+          <CameraTest />
           <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
             <input
               type="checkbox"

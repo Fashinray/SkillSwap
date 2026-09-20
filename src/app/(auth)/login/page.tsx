@@ -36,8 +36,17 @@ export default function LoginPage() {
     if (user) {
       const { data: profile } = await supabase
         .from('users').select('role').eq('user_id', user.id).single()
-      if (profile?.role === 'admin') router.push('/admin')
-      else router.push('/dashboard')
+      // Wait for session to be fully established before navigating
+      // This is critical on mobile browsers over local HTTP
+      await supabase.auth.getSession()
+      const role = profile?.role
+      if (role === 'super_admin') {
+        router.replace('/superadmin')
+      } else if (role === 'admin') {
+        router.replace('/admin')
+      } else {
+        router.replace('/dashboard')
+      }
       router.refresh()
     }
   }
@@ -77,8 +86,12 @@ export default function LoginPage() {
               placeholder="••••••••"
               className="w-full pl-11 pr-12 py-3 rounded-xl bg-white border border-[#c7c4d8] focus:border-[#4f46e5] focus:ring-2 focus:ring-[#4f46e5]/20 outline-none text-[#0b1c30] text-sm transition-all"
             />
-            <button type="button" onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 hover:text-[#0b1c30] transition-colors">
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              onPointerDown={(e) => e.preventDefault()}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-2 -mr-2 touch-manipulation hover:text-[#0b1c30] transition-colors"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}>
               <EyeIcon open={showPassword} />
             </button>
           </div>

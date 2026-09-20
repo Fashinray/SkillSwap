@@ -8,7 +8,7 @@ async function requireAdmin() {
   if (!user) return null
   const { data: profile } = await supabase
     .from('users').select('role').eq('user_id', user.id).single()
-  if (profile?.role !== 'admin') return null
+  if (!['admin', 'super_admin'].includes(profile?.role ?? '')) return null
   return user
 }
 

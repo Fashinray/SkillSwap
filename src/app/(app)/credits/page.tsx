@@ -49,7 +49,7 @@ export default async function CreditsPage() {
                 <th className="text-left px-4 py-3 font-medium text-gray-600">
                   Type
                 </th>
-                <th className="text-left px-4 py-3 font-medium text-gray-600">
+                <th className="text-left px-4 py-3 font-medium text-gray-600 hidden sm:table-cell">
                   Description
                 </th>
                 <th className="text-right px-4 py-3 font-medium text-gray-600">
@@ -69,7 +69,7 @@ export default async function CreditsPage() {
                   <td className="px-4 py-3 text-gray-700">
                     {typeLabels[tx.type] ?? tx.type}
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{tx.description}</td>
+                  <td className="px-4 py-3 text-gray-500 hidden sm:table-cell">{tx.description}</td>
                   <td
                     className={`px-4 py-3 text-right font-semibold ${
                       tx.amount > 0 ? 'text-emerald-600' : 'text-red-600'

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import ProficiencyBadge from '@/components/ProficiencyBadge'
 
 export default async function PublicProfilePage({
   params,
@@ -24,7 +25,7 @@ export default async function PublicProfilePage({
 
   const { data: teachSkills } = await supabase
     .from('user_skills')
-    .select('user_skill_id, proficiency, skills(name, tier, category)')
+    .select('user_skill_id, role, admin_score, proficiency_label, skills(name, tier, category)')
     .eq('user_id', userId)
     .eq('role', 'teach')
 
@@ -118,9 +119,13 @@ export default async function PublicProfilePage({
             {teachSkills.map((s: any) => (
               <span
                 key={s.user_skill_id}
-                className={`text-sm px-3 py-1 rounded-full ${tierColors[s.skills.tier]}`}
+                className={`inline-flex items-center gap-1.5 text-sm px-3 py-1 rounded-full ${tierColors[s.skills.tier]}`}
               >
                 {s.skills.name}
+                <ProficiencyBadge
+                  label={s.proficiency_label as any}
+                  score={s.admin_score}
+                />
               </span>
             ))}
           </div>

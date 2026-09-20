@@ -7,7 +7,9 @@ const nextConfig: NextConfig = {
   // Next.js silently blocks that cross-origin HMR connection, the client
   // loses its connection to the dev server, and its recovery logic forces
   // periodic full page reloads — which wipes any in-progress form input.
-  allowedDevOrigins: ['192.168.18.4'],
+  // NOTE: this is the machine's LAN IP and will need updating again if it
+  // changes (DHCP lease renewal, different Wi-Fi network, etc).
+  allowedDevOrigins: ['192.168.18.4', '192.168.1.64'],
 };
 
 export default nextConfig;

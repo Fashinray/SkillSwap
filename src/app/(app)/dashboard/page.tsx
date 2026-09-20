@@ -199,12 +199,13 @@ export default async function DashboardPage() {
       </div>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { href: '/match', icon: 'hub', label: 'Find Match', color: 'bg-[#e5eeff] text-[#4f46e5]' },
           { href: '/sessions', icon: 'calendar_month', label: 'My Sessions', color: 'bg-[#e9ddff] text-[#6b38d4]' },
           { href: '/profile', icon: 'manage_accounts', label: 'Edit Profile', color: 'bg-[#eff4ff] text-[#3525cd]' },
           { href: '/credits', icon: 'account_balance_wallet', label: 'View Ledger', color: 'bg-[#006e4b]/10 text-[#006e4b]' },
+          { href: '/camera-test', icon: 'videocam', label: 'Test Camera', color: 'bg-amber-50 text-amber-600' },
         ].map((action) => (
           <a key={action.href} href={action.href}
             className="bg-white rounded-2xl border border-[#e5eeff] p-4 flex items-center gap-3 hover:border-[#4f46e5]/30 hover:shadow-md transition-all card-shadow group">
