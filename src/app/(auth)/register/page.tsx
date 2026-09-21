@@ -55,9 +55,15 @@ export default function RegisterPage() {
 
   async function handleAccountSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    setLoading(true)
     setError('')
     const formData = new FormData(e.currentTarget)
+    const password = formData.get('password') as string
+    const confirmPassword = formData.get('confirmPassword') as string
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+    setLoading(true)
     const result = await signUp(formData)
     if (result?.error) { setError(result.error); setLoading(false); return }
     if (result?.success) {
@@ -270,6 +276,24 @@ export default function RegisterPage() {
             <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-[#777587] text-xl">lock</span>
             <input name="password" type={showPassword ? 'text' : 'password'} required minLength={8}
               placeholder="At least 8 characters"
+              className="w-full pl-11 pr-12 py-3 rounded-xl bg-white border border-[#c7c4d8] focus:border-[#4f46e5] focus:ring-2 focus:ring-[#4f46e5]/20 outline-none text-[#0b1c30] text-sm transition-all" />
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              onPointerDown={(e) => e.preventDefault()}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 p-2 -mr-2 touch-manipulation hover:text-[#0b1c30] transition-colors"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}>
+              <EyeIcon open={showPassword} />
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-[#464555] font-['Geist'] mb-1.5">Confirm Password</label>
+          <div className="relative">
+            <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-[#777587] text-xl">lock</span>
+            <input name="confirmPassword" type={showPassword ? 'text' : 'password'} required minLength={8}
+              placeholder="Re-enter your password"
               className="w-full pl-11 pr-12 py-3 rounded-xl bg-white border border-[#c7c4d8] focus:border-[#4f46e5] focus:ring-2 focus:ring-[#4f46e5]/20 outline-none text-[#0b1c30] text-sm transition-all" />
             <button
               type="button"
