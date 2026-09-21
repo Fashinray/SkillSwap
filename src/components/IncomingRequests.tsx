@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { respondToMatchRequest } from '@/lib/actions/match'
 
-interface Request {
+export interface IncomingMatchRequest {
   match_id: string
   created_at: string
   status: string
@@ -19,7 +19,7 @@ const tierColors: Record<string, string> = {
   advanced: 'bg-red-100 text-red-700',
 }
 
-export default function IncomingRequests({ requests }: { requests: Request[] }) {
+export default function IncomingRequests({ requests }: { requests: IncomingMatchRequest[] }) {
   const [responding, setResponding] = useState<string | null>(null)
   const [resolved, setResolved] = useState<Set<string>>(new Set())
   const [error, setError] = useState('')

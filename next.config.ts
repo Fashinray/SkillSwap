@@ -10,6 +10,17 @@ const nextConfig: NextConfig = {
   // NOTE: this is the machine's LAN IP and will need updating again if it
   // changes (DHCP lease renewal, different Wi-Fi network, etc).
   allowedDevOrigins: ['192.168.18.4', '192.168.1.64'],
+  // Needed for next/image on the match page's user avatars, which come
+  // from this project's Supabase Storage bucket.
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'uzhjsyiqjglgjgryprst.supabase.co',
+        pathname: '/storage/v1/object/**',
+      },
+    ],
+  },
 };
 
 export default nextConfig;

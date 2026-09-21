@@ -44,3 +44,4 @@ certificates
 
 # Playwright test results
 /test-results/
+/tests/screenshots/
