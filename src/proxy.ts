@@ -43,7 +43,17 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (user && (pathname === '/login' || pathname === '/register')) {
+  // GET-only: a signed-in user's Server Action calls (e.g. Step 2 of
+  // registration, submitted from a form still sitting on /register) are
+  // POSTs to this same pathname. Redirecting those meant the action never
+  // ran at all — the client saw a 307 to /dashboard instead of the
+  // expected action response and threw "An unexpected response was
+  // received from the server." This is the root cause of Step 2 silently
+  // failing, confirmed locally and against the live Vercel deployment: the
+  // signup in Step 1 leaves an active session (this project doesn't
+  // require email confirmation before a session exists), so by Step 2 the
+  // request already carries an auth cookie while still on /register.
+  if (user && request.method === 'GET' && (pathname === '/login' || pathname === '/register')) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)

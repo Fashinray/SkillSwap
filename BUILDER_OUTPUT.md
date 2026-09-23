@@ -868,3 +868,106 @@ $ echo $?
 Clean — zero TypeScript errors (no application code was changed this
 round — this session's changes were direct database operations via
 scripts, not app code).
+
+---
+
+# Rename middleware.ts to proxy.ts (Next.js 16) — 2026-09-21
+
+Vercel production was returning `500 MIDDLEWARE_INVOCATION_FAILED`, with
+the build log showing: `The middleware file convention is deprecated.
+Please use proxy instead.`
+
+## Step 1–2 — deviation from "same content exactly"
+
+Before copying anything, checked the actual migration semantics against
+this project's bundled Next.js 16 docs
+(`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`),
+per `AGENTS.md`'s standing instruction not to assume this Next.js version
+behaves like training data suggests. This **is not a pure rename**: the
+doc's own migration section shows the official codemod
+(`npx @next/codemod@canary middleware-to-proxy .`) diff as
+
+```diff
+- export function middleware() {
++ export function proxy() {
+```
+
+A `proxy.ts` file must export its handler either as the default export or
+named exactly `proxy` — one that still exports a function named
+`middleware` isn't recognized as valid Proxy code at all. So "same
+content exactly" would not have fixed the deployment failure; I renamed
+the exported function too (`middleware` → `proxy`), matching the
+documented codemod, and left everything else — logic, `config`/matcher —
+byte-for-byte identical.
+
+Confirmed with a live dev-server check during the transition: for the
+brief window where both `src/middleware.ts` and `src/proxy.ts` existed
+(before the old file was deleted), the dev server correctly errored with
+`"Both middleware file './src/middleware.ts' and proxy file
+'./src/proxy.ts' are detected. Please use './src/proxy.ts' only."` — then
+recompiled clean (`✓ Compiled in 36.6s`) the moment the old file was gone,
+confirming the new file is what Next.js is actually picking up now.
+
+## Step 3 — import check
+
+`src/proxy.ts` imports only `createServerClient` from `@supabase/ssr` and
+`NextResponse`/`NextRequest` from `next/server` — both package imports,
+unaffected by moving the file within `src/`. It does **not** import
+anything from `@/lib/supabase/` (it calls `createServerClient` directly
+rather than using the app's `@/lib/supabase/server` wrapper, which relies
+on `next/headers` — not usable from Proxy). Grepped the rest of `src/`
+for any reference to the old `middleware` function by name: none — no
+other file imports it, so no follow-on changes were needed anywhere else.
+
+## Step 4 — TypeScript output
+
+```
+$ cd skillswap && npx tsc --noEmit
+(no output)
+$ echo $?
+0
+```
+
+Clean. Also ran `eslint src/proxy.ts` as an extra check: clean.
+
+## Extra verification (not in the original steps, done anyway)
+
+Hit `/dashboard` unauthenticated locally after the swap:
+
+```
+$ curl -s -o /dev/null -w "status: %{http_code}\nredirect_to: %{redirect_url}\n" http://localhost:3000/dashboard
+status: 307
+redirect_to: http://localhost:3000/login
+```
+
+Same redirect behavior as before the rename — the auth-gating logic
+itself is unaffected, confirming this was purely the file-convention
+migration and not a behavior change.
+
+## Step 5 — commit and push
+
+```
+$ git add .
+$ git commit -m "Rename middleware to proxy for Next.js 16 compatibility"
+$ git push origin master
+   4644300..4f37787  master -> master
+```
+
+Pushed as commit `4f37787`.
+
+## One caveat I can't verify from here
+
+`MIDDLEWARE_INVOCATION_FAILED` is Vercel's generic label for "the
+proxy/middleware function threw at request time in production" — the
+build-log warning you saw (the deprecation notice) is consistent with
+this being the cause, and everything above confirms the rename itself is
+correct and functionally identical locally. But I don't have access to
+Vercel's actual runtime invocation logs (just the build-log excerpt you
+pasted), so if the 500 persists after this deploys, the next thing to
+check would be whether `NEXT_PUBLIC_SUPABASE_URL` /
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` are actually set in the Vercel project's
+environment variables — `src/proxy.ts` reads both with a non-null
+assertion (`!`), so a missing env var in the Vercel dashboard (as opposed
+to just `.env.local`, which Vercel never sees) would throw inside Proxy
+on every request and produce exactly this same error code, independent
+of the file-naming issue.

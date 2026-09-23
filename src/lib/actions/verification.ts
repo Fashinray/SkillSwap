@@ -21,12 +21,17 @@ export async function submitVerificationDocuments(formData: FormData) {
     return { error: 'Please provide at least one document or profile link.' }
   }
 
-  await admin.from('users').update({
+  const { error: updateError } = await admin.from('users').update({
     linkedin_url: linkedinUrl || null,
     github_url: githubUrl || null,
     portfolio_url: portfolioUrl || null,
     verification_status: 'under_review',
   }).eq('user_id', user.id)
+
+  if (updateError) {
+    console.error('[submitVerificationDocuments] users update failed:', updateError.message)
+    return { error: 'Could not save your details. Please try again.' }
+  }
 
   for (const file of files) {
     if (!file || file.size === 0) continue
@@ -35,11 +40,21 @@ export async function submitVerificationDocuments(formData: FormData) {
     if (file.size > 5 * 1024 * 1024) continue
 
     const path = `${user.id}/${Date.now()}_${file.name}`
-    const { data: uploadData, error: uploadError } = await supabase.storage
+    // 'verification-docs' is a private bucket with no storage.objects RLS
+    // policy (same model as 'session-files' — see
+    // supabase/migrations/009_session_files_bucket.sql), so writes must go
+    // through the service-role client. The RLS-bound `supabase` client used
+    // here previously made every upload fail with a permission error that
+    // was silently discarded below — this was the actual cause of Step 2's
+    // file uploads never going through.
+    const { data: uploadData, error: uploadError } = await admin.storage
       .from('verification-docs')
       .upload(path, file, { upsert: false })
 
-    if (uploadError || !uploadData) continue
+    if (uploadError || !uploadData) {
+      console.error('[submitVerificationDocuments] file upload failed:', file.name, uploadError?.message)
+      continue
+    }
 
     await admin.from('verification_documents').insert({
       user_id: user.id,

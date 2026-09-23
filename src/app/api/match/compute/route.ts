@@ -136,13 +136,23 @@ export async function GET() {
   const myLearn = new Set(mySkills.filter((s) => s.role === 'learn').map((s) => s.skill_id))
   const mySlots = myProfile.availability_slots as AvailabilitySlot[]
 
-  const { data: candidates } = await admin
+  const { data: allCandidates } = await admin
     .from('users')
     .select('user_id, full_name, bio, reputation_score, credit_balance, is_trusted, user_skills(skill_id, role), availability_slots(weekday, start_min, end_min)')
-    .eq('is_verified', true)
     .neq('user_id', user.id)
 
-  if (!candidates || candidates.length === 0) {
+  // All users are now eligible as match candidates regardless of admin/email
+  // verification (the UI distinguishes verification status via a pill
+  // instead — see MatchCard) — but a "complete profile" is still required:
+  // at least one teach skill and one learn skill each.
+  const candidates = (allCandidates ?? []).filter((c) => {
+    const skills = c.user_skills as UserSkillRow[]
+    const hasTeach = skills.some((s) => s.role === 'teach')
+    const hasLearn = skills.some((s) => s.role === 'learn')
+    return hasTeach && hasLearn
+  })
+
+  if (candidates.length === 0) {
     return NextResponse.json({ matches: [] })
   }
 

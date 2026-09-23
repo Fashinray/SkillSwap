@@ -21,6 +21,10 @@ export interface MatchCardProps {
   // deviations) — needed to wire the Request button to the existing
   // sendMatchRequest(recipientId, skillId) action without rewriting it.
   teachSkillId?: string
+  // 'pending' | 'under_review' | 'verified' | 'rejected' (see
+  // supabase/migrations/011_superadmin_and_verification.sql) — drives the
+  // 3-state verification pill below.
+  verificationStatus?: string
 }
 
 const CATEGORY_GRADIENTS: Record<string, string> = {
@@ -36,11 +40,11 @@ const TIER_LABELS: Record<MatchCardProps['teachSkillTier'], string> = {
 }
 
 function VerificationPill({
-  isVerified,
   adminVerified,
+  verificationStatus,
 }: {
-  isVerified: boolean
   adminVerified: boolean
+  verificationStatus?: string
 }) {
   if (adminVerified) {
     return (
@@ -49,16 +53,22 @@ function VerificationPill({
       </span>
     )
   }
-  if (!isVerified) {
+  if (verificationStatus === 'under_review') {
     return (
       <span className="bg-amber-400/90 text-white text-xs px-2 py-0.5 rounded-full font-medium">
-        Pending
+        Under Review
       </span>
     )
   }
+  // Covers 'pending' (the column's default — nothing submitted yet) and
+  // 'rejected'. The spec's literal wording is 'not_started' or null, but
+  // the real verification_status CHECK constraint only allows
+  // 'pending' | 'under_review' | 'verified' | 'rejected' (see
+  // supabase/migrations/011_superadmin_and_verification.sql) — 'pending' is
+  // what a fresh/never-submitted row actually has.
   return (
-    <span className="bg-amber-400/90 text-white text-xs px-2 py-0.5 rounded-full font-medium">
-      Under Review
+    <span className="bg-slate-400/90 text-white text-xs px-2 py-0.5 rounded-full font-medium">
+      Unverified
     </span>
   )
 }
@@ -117,6 +127,7 @@ export default function MatchCard({
   category,
   hasExistingRequest,
   teachSkillId,
+  verificationStatus,
 }: MatchCardProps) {
   const gradient = CATEGORY_GRADIENTS[category ?? ''] ?? 'from-indigo-500 to-purple-600'
   const tierLabel = TIER_LABELS[teachSkillTier]
@@ -160,7 +171,7 @@ export default function MatchCard({
         <div className="absolute bottom-4 left-1/3 w-16 h-16 rounded-full bg-white opacity-10" />
 
         <div className="absolute top-3 left-3">
-          <VerificationPill isVerified={isVerified} adminVerified={adminVerified} />
+          <VerificationPill adminVerified={adminVerified} verificationStatus={verificationStatus} />
         </div>
 
         {typeof compatibilityScore === 'number' && (

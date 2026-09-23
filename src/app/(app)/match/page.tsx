@@ -94,9 +94,9 @@ export default async function MatchPage({ searchParams }: MatchPageProps) {
     candidateIds.length
       ? supabase
           .from('users')
-          .select('user_id, avatar_url, is_verified, admin_verified')
+          .select('user_id, avatar_url, is_verified, admin_verified, verification_status')
           .in('user_id', candidateIds)
-      : Promise.resolve({ data: [] as { user_id: string; avatar_url: string | null; is_verified: boolean; admin_verified: boolean | null }[] }),
+      : Promise.resolve({ data: [] as { user_id: string; avatar_url: string | null; is_verified: boolean; admin_verified: boolean | null; verification_status: string | null }[] }),
     candidateIds.length
       ? supabase
           .from('user_skills')
@@ -137,6 +137,7 @@ export default async function MatchPage({ searchParams }: MatchPageProps) {
       avatarUrl: profile?.avatar_url ?? undefined,
       isVerified: profile?.is_verified ?? true,
       adminVerified: profile?.admin_verified ?? false,
+      verificationStatus: profile?.verification_status ?? undefined,
       isTrusted: candidate.is_trusted,
       teachSkill: teachSkill?.name ?? 'General Skills',
       teachSkillTier: (teachSkill?.tier as MatchCardProps['teachSkillTier']) ?? 'basic',
@@ -178,7 +179,7 @@ export default async function MatchPage({ searchParams }: MatchPageProps) {
           Connect with verified OAU students who teach what you want to learn
         </p>
         <p className="mt-2 text-xs text-[#777587]">
-          {filteredCards.length} verified teacher{filteredCards.length === 1 ? '' : 's'} available · Sorted by compatibility
+          {filteredCards.length} teacher{filteredCards.length === 1 ? '' : 's'} available · Sorted by compatibility
         </p>
       </div>
 
