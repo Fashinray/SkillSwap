@@ -1194,3 +1194,112 @@ flagging only because you'll see the same line if you run the backfill
 script yourself.
 
 Then stopping, as instructed.
+
+---
+
+# Scope the proxy's unauthenticated redirect to GET only — 2026-09-23
+
+Applying the same fix, requested directly this time, to the *other*
+redirect rule in `src/proxy.ts` — the one I flagged but deliberately left
+alone in the previous entry's deviation #4: `if (!user && !isPublicPath
+&& !isApiPath) redirect('/login')` had the identical structural gap as
+the registration bug (not method-scoped, so it also hijacks Server Action
+POSTs, not just page GETs).
+
+## Verification done before changing anything
+
+Since this touches app-wide auth enforcement (not just registration),
+before applying it I checked whether it's actually safe: does every
+Server Action reachable from client code defend itself with its own
+`auth.getUser()` check, independent of the proxy? If any didn't, removing
+proxy-level protection for POSTs would open a real auth bypass on that
+one.
+
+Grepped every `'use server'` file
+(`src/lib/actions/{auth,match,profile,review,session,verification}.ts`,
+`src/components/match/MatchCard.tsx`) for exported functions missing a
+guard. Three had none:
+
+- **`grantStarterCredits(userId)`** (`auth.ts`) — no auth check, and uses
+  the admin client. But its only two importers are
+  `src/app/auth/callback/route.ts` and `src/app/auth/confirm/route.ts` —
+  both Route Handlers calling it server-to-server, never from a client
+  component. Since Next.js only wires a Server Action up as an
+  independently callable HTTP endpoint when it's referenced from
+  client-bundled code, and nothing client-side imports this function, it
+  has no reachable action ID of its own — this proxy change doesn't
+  affect it either way.
+- **`getSessionReviews(sessionId)`** (`review.ts`) and
+  **`runGhostSweep()`** (`session.ts`) — both have **zero importers
+  anywhere** in the codebase (checked with a plain grep, confirmed
+  nothing references either name outside their own definition file).
+  Dead code, not a live attack surface, regardless of proxy behavior.
+
+Every other exported action — the ones actually wired into client
+components (`sendMatchRequest`, `respondToMatchRequest`,
+`getIncomingRequests`, `updateProfile`, `addUserSkill`, `removeUserSkill`,
+`setAvailability`, `submitReview`, `bookSession`, `uploadSessionFile`,
+`confirmCompletion`, `cancelSession`, `fileDispute`,
+`submitVerificationDocuments`, plus `MatchCard`'s inline `requestMatch`
+wrapper, which delegates to the already-checked `sendMatchRequest`) —
+already has `if (!user) return { error: 'Not authenticated' }` before
+doing anything. So the change is safe: an unauthenticated POST to a
+protected page now reaches the action instead of getting redirected, and
+the action itself correctly rejects it with a clean error instead of the
+proxy producing a broken redirect-instead-of-response crash.
+
+`isApiPath` routes (`/api/**`) were already excluded from this rule
+before my change and remain untouched — they handle their own 401/403
+already, as the existing comment states.
+
+## Change made
+
+`src/proxy.ts`:
+
+```diff
+- if (!user && !isPublicPath && !isApiPath) {
++ if (request.method === 'GET' && !user && !isPublicPath && !isApiPath) {
+```
+
+Exactly the condition specified. Comment added above it explaining the
+reasoning and referencing this verification.
+
+## Functional check
+
+GET requests to protected pages still redirect unauthenticated visitors,
+unchanged:
+
+```
+$ curl -s -o /dev/null -w "status: %{http_code}\nredirect_to: %{redirect_url}\n" http://localhost:3000/dashboard
+status: 307
+redirect_to: http://localhost:3000/login
+$ curl -s -o /dev/null -w "status: %{http_code}\nredirect_to: %{redirect_url}\n" http://localhost:3000/profile
+status: 307
+redirect_to: http://localhost:3000/login
+```
+
+## TypeScript output
+
+```
+$ npx tsc --noEmit
+(no output)
+$ echo $?
+0
+```
+
+Clean.
+
+## Git output
+
+```
+$ git add .
+$ git commit -m "Scope proxy unauthenticated redirect to GET requests only"
+[master 0c14d6f] Scope proxy unauthenticated redirect to GET requests only
+ 2 files changed, 234 insertions(+), 1 deletion(-)
+$ git push origin master
+   35c1f0d..0c14d6f  master -> master
+```
+
+Pushed as **`0c14d6f`**.
+
+Then stopping, as instructed.
