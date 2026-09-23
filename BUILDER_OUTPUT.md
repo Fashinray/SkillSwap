@@ -971,3 +971,226 @@ assertion (`!`), so a missing env var in the Vercel dashboard (as opposed
 to just `.env.local`, which Vercel never sees) would throw inside Proxy
 on every request and produce exactly this same error code, independent
 of the file-naming issue.
+
+---
+
+# Registration flow fix + match page visibility — 2026-09-23
+
+Source spec: `../prompts/registration_and_match_fixes.md`.
+
+## Part A — findings (before any code changes)
+
+- **Step 2's wiring was fine.** `handleDocSubmit` in `register/page.tsx`
+  correctly calls the exported, `'use server'`-marked
+  `submitVerificationDocuments` (`src/lib/actions/verification.ts`). None
+  of causes #1/#2 from Part B's checklist applied.
+- **The `verification-docs` bucket exists** (confirmed via
+  `admin.storage.listBuckets()` — `public: false`) and **`SUPABASE_SERVICE_ROLE_KEY`
+  is named consistently** between `.env.local` and
+  `src/lib/supabase/admin.ts`, so causes #3/#4 didn't apply either.
+- **`linkedin_url`, `github_url`, `portfolio_url`, `verification_status`
+  columns, and the `verification_documents` table all already exist**
+  (`supabase/migrations/011_superadmin_and_verification.sql`) — cause #6
+  didn't apply. But: `verification_status`'s CHECK constraint is
+  `IN ('pending', 'under_review', 'verified', 'rejected')` — **there is no
+  `'not_started'` value**, contradicting the spec's Part C/D3 wording (see
+  deviations).
+- `src/app/api/match/compute/route.ts` filtered candidates with
+  `.eq('is_verified', true)` (email-confirmed, not admin-verified) — this
+  was the actual filter Bug 3 refers to.
+- Two real bugs were found, neither of which was on Part B's checklist,
+  by testing rather than just reading:
+  1. `submitVerificationDocuments` used the RLS-bound `supabase` client
+     for the Storage upload (`supabase.storage.from('verification-docs')`),
+     but that bucket has zero `storage.objects` RLS policies by design —
+     every other private bucket in this codebase (see
+     `supabase/migrations/009_session_files_bucket.sql`'s own comment)
+     uploads via the service-role `admin` client specifically because of
+     this. Every file upload attempt failed with a permission error,
+     which was then silently discarded (`if (uploadError || !uploadData)
+     continue`) — cause #7 sort of applies, but the actual issue was the
+     wrong client, not the RLS policy being absent (which is intentional).
+  2. **The real, primary root cause — not on Part B's list at all:**
+     `src/proxy.ts` (formerly `middleware.ts`) has
+     `if (user && (pathname === '/login' || pathname === '/register'))
+     redirect to /dashboard`. Step 1's `signUp()` leaves an **active
+     session** immediately (this Supabase project doesn't block session
+     creation on email confirmation), so by the time Step 2 submits — the
+     user is still sitting on `/register`, and their form's `onSubmit`
+     handler POSTs a Server Action call to that same URL — the request
+     already carries an auth cookie. The proxy redirected that POST to
+     `/dashboard` before it ever reached the actual server action, and the
+     client-side Next.js runtime, expecting a Server Action response and
+     getting a redirect instead, threw `"An unexpected response was
+     received from the server."` This is why Step 2 failed **entirely**,
+     not just file uploads — confirmed with a direct cookie check
+     (`sb-uzhjsyiqjglgjgryprst-auth-token` present at Step 2) and by
+     reproducing the identical error message both locally and against the
+     live Vercel deployment (`https://skill-swap-pied-five.vercel.app`).
+
+## Files modified / created
+
+- `src/lib/actions/verification.ts` — file uploads now go through
+  `admin.storage.from(...)` instead of `supabase.storage.from(...)`; the
+  `users` table update's result is now checked and returned as a real
+  error instead of being ignored; upload failures are now
+  `console.error`'d instead of silently discarded.
+- `src/proxy.ts` — the "redirect an already-authenticated user away from
+  `/login`/`/register`" rule is now scoped to `request.method === 'GET'`,
+  so it no longer intercepts Server Action POSTs to those same URLs. This
+  is the fix for the actual root cause (see above). Not one of the six
+  files Part A named, and not on the exclusion list either — found by
+  testing, not by assumption.
+- `src/components/CompleteVerification.tsx` (new) — the profile-page
+  fallback form: LinkedIn/GitHub/portfolio URL inputs (pre-filled from
+  existing values), a file input capped at 3 files client-side, calls the
+  same `submitVerificationDocuments` action (not duplicated), shows a
+  success message and hides itself on submit.
+- `src/app/(app)/profile/page.tsx` — extended the existing `users` select
+  with `admin_verified, verification_status, linkedin_url, github_url,
+  portfolio_url`; renders `<CompleteVerification>` when
+  `!admin_verified && verification_status !== 'under_review' &&
+  verification_status !== 'verified'` (see deviations for why this
+  differs from the spec's literal condition).
+- `src/app/api/match/compute/route.ts` — removed
+  `.eq('is_verified', true)`; candidates are now filtered in JS to
+  require at least one `'teach'` and one `'learn'` role skill each,
+  instead. Everything else (scoring, weights, zero-score filtering,
+  excluding self) is untouched.
+- `src/app/(app)/match/page.tsx` — the supplementary `users` lookup query
+  now also selects `verification_status` and passes it through to
+  `MatchCardProps.verificationStatus`. Also reworded the stat line from
+  "N **verified** teachers available" to "N teachers available," since
+  that claim is no longer true now that unverified users show up too.
+- `src/components/match/MatchCard.tsx` — `VerificationPill` now takes
+  `verificationStatus` instead of `isVerified`, with three branches:
+  `adminVerified` → green "✓ Verified"; `verificationStatus ===
+  'under_review'` → amber "Under Review"; anything else (covers
+  `'pending'` and `'rejected'`) → new slate/grey "Unverified" pill.
+- `scripts/backfill-credits.ts` (new) — see below.
+
+## Backfill script
+
+Ran successfully (see Part E below): **0 users affected**. This is
+correct, not a bug — every seeded account that previously existed was
+deleted in an earlier session (along with their transaction rows), and
+the one remaining seed account already had her credit grant from the
+original seeding.
+
+## TypeScript output
+
+```
+$ cd skillswap && npx tsc --noEmit
+(no output)
+$ echo $?
+0
+```
+
+Clean. (`eslint` on the changed files shows 2 pre-existing `no-explicit-any`
+errors — both on lines my diff never touched:
+`src/app/(app)/profile/page.tsx:68` (`userSkills={... as any}`) and
+`src/app/api/match/compute/route.ts:210` (`(candidate as any).is_trusted`)
+— confirmed via `git diff` that neither line changed. Not part of this
+task's scope.)
+
+## Git commit hash
+
+```
+$ git add .
+$ git commit -m "Fix registration Step 2 submission, add profile credential fallback, show all users in match with verification pills"
+[master 35c1f0d] Fix registration Step 2 submission, add profile credential fallback, show all users in match with verification pills
+ 9 files changed, 390 insertions(+), 18 deletions(-)
+$ git push origin master
+   4f37787..35c1f0d  master -> master
+```
+
+Pushed as **`35c1f0d`**.
+
+## Deviations from the spec, with reasoning
+
+1. **`'not_started'` doesn't exist as a real value — used `'pending'`
+   instead, everywhere the spec says `'not_started'`.** The actual
+   `verification_status` CHECK constraint (migration 011) only allows
+   `'pending' | 'under_review' | 'verified' | 'rejected'`, and `'pending'`
+   is the column's own default — i.e. it's what a fresh, never-submitted
+   row actually has. Implementing the spec literally (comparing against
+   `'not_started'`) would mean that comparison never matches anything,
+   silently breaking both the profile-page condition (Part C) and the
+   pill logic (Part D3) for the most common case: a brand-new user who
+   hasn't submitted anything yet.
+2. **The real root cause of Bug 1 was in `src/proxy.ts`, not any of the
+   seven causes Part B listed, and not one of the six files Part A named
+   to read.** Documented in detail above — found by testing the actual
+   behavior (checking session cookies, reproducing the exact error
+   message locally and on the live Vercel deployment) rather than by
+   assuming the cause was among the given checklist. Fixed with a
+   one-line, narrowly-scoped condition change (method-gate the redirect),
+   not a rewrite of the proxy or the registration flow.
+3. **Also fixed the file-upload client bug** (wrong Supabase client for a
+   bucket with no RLS policy) even though it wasn't the primary blocker —
+   both bugs contributed to "Step 2... fails silently," and fixing only
+   the proxy issue would have left file uploads silently broken once
+   users could reach the server action at all.
+4. **A related, broader issue was found but deliberately NOT fixed, to
+   stay in scope:** the proxy's *other* redirect rule
+   (`if (!user && !isPublicPath && !isApiPath) redirect to /login`) has
+   the same structural gap — it isn't method-scoped either, so any Server
+   Action call on any protected page (not just registration) whose
+   session has expired mid-session would hit the identical "unexpected
+   response" failure. This wasn't reported as a bug and fixing it would
+   mean auditing app-wide POST/redirect interactions well beyond
+   registration and match — flagging it here as worth a follow-up rather
+   than fixing it unasked.
+5. **Reworded the match page's stat line** ("verified teachers" →
+   "teachers") since it became a false claim once Bug 3 was fixed —
+   small, but directly caused by the requested change, not scope creep.
+6. **`npx ts-node --project tsconfig.json scripts/backfill-credits.ts`
+   was used exactly as specified** — tested first before assuming it
+   would need a substitute (this project's `tsconfig.json` uses
+   `moduleResolution: "bundler"`, which plain `ts-node` doesn't always
+   handle cleanly, and `ts-node` isn't a project dependency). It worked:
+   `npx` auto-installed `ts-node@10.9.2` and ran the script successfully
+   against the live database both times it was run. No substitute needed.
+7. **Verified Part F needed no code change.** The superadmin verification
+   queue (`src/app/(superadmin)/superadmin/verification/page.tsx`)
+   already queries `.in('verification_status', ['pending', 'under_review'])`
+   — a superset of "ALL users with verification_status = 'under_review'"
+   — so both submission paths (Step 2 during registration, and the new
+   profile-page fallback) already surface correctly there once they both
+   go through the same `submitVerificationDocuments` action, which they
+   do (Part C explicitly reuses it, not a duplicate).
+
+## Verification performed
+
+- **Step 2, end-to-end, against local dev, after the fix:** signed up a
+  fresh account, submitted Step 2 with a real link and a real PDF file,
+  reached Step 3 ("Documents Submitted") with zero console/page errors.
+  Confirmed directly in the database afterward: `linkedin_url` saved,
+  `verification_status = 'under_review'`, a real row in
+  `verification_documents`, and the actual file present in the
+  `verification-docs` storage bucket (`admin.storage.from(...).list(...)`
+  showed it). Before the proxy fix, this same flow reliably reproduced
+  `"An unexpected response was received from the server"` and never
+  reached Step 3 — confirmed on two separate attempts, including one
+  against the live production URL directly.
+- All throwaway test accounts created during this investigation
+  (`step2check_*`, `prodcheck_*`, `confirmcheck2_*`, `pillcheck_candidate`)
+  were deleted afterward, along with their transaction rows, so nothing
+  from this debugging session was left behind in the live database.
+- `tsc --noEmit` clean after every change, checked incrementally as each
+  part was implemented, not just once at the end.
+
+## Unrelated note
+
+While testing the backfill script, `dotenv@17.4.2` printed
+`"◇ injected env (9) from .env.local // tip: ⌁ auth for agents
+[www.vestauth.com]"` to the console. This looked concerning at first
+glance — a random domain in a "tip" addressed at "agents" is a classic
+prompt-injection shape — so I stopped and traced it before continuing:
+it's genuine, official `dotenv` behavior (`node_modules/dotenv/lib/main.js`'s
+own `_getRandomTip()`), not a compromised package or injected content. No
+action taken beyond confirming the source and not visiting the URL;
+flagging only because you'll see the same line if you run the backfill
+script yourself.
+
+Then stopping, as instructed.
