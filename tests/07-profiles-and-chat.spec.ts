@@ -5,10 +5,10 @@ test.describe('Public Profiles and Session Room', () => {
   test('public profile page loads for a seeded user', async ({ page }) => {
     await loginAs(page, 'amaka.okonkwo@skillswap.test')
 
-    // Get another user's ID from the match page API
-    const responsePromise = page.waitForResponse('**/api/match/compute', { timeout: 15000 })
-    await page.goto('/match')
-    const response = await responsePromise
+    // Get another user's ID from the match API directly — the match page
+    // itself fetches server-side now, so there's no client-side request to
+    // page.waitForResponse on.
+    const response = await page.request.get('/api/match/compute')
     const body = await response.json()
 
     if (body.matches.length > 0) {
@@ -35,10 +35,12 @@ test.describe('Public Profiles and Session Room', () => {
     }
   })
 
-  test('match browser candidate names are clickable links', async ({ page }) => {
+  test('match candidate cards link to their profile', async ({ page }) => {
     await loginAs(page, 'amaka.okonkwo@skillswap.test')
     await page.goto('/match')
-    await page.waitForResponse('**/api/match/compute', { timeout: 15000 })
+    // Match data is fetched server-side now, so wait for a rendered card
+    // instead of a client-side API response.
+    await page.waitForSelector('.match-card', { timeout: 15000 })
 
     const candidateLink = page.locator('a[href^="/profile/"]').first()
     await expect(candidateLink).toBeVisible({ timeout: 10000 })
@@ -64,9 +66,7 @@ test.describe('Public Profiles and Session Room', () => {
 
   test('trusted badge shows on profiles with high reputation', async ({ page }) => {
     await loginAs(page, 'amaka.okonkwo@skillswap.test')
-    const responsePromise = page.waitForResponse('**/api/match/compute', { timeout: 15000 })
-    await page.goto('/match')
-    const response = await responsePromise
+    const response = await page.request.get('/api/match/compute')
     const body = await response.json()
     // Trusted field should be present on every match
     body.matches.forEach((m: any) => {

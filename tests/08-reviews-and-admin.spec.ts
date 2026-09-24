@@ -10,9 +10,7 @@ test.describe('Peer Reviews and Reputation', () => {
 
   test('public profile shows no-shows count', async ({ page }) => {
     await loginAs(page, 'amaka.okonkwo@skillswap.test')
-    const responsePromise = page.waitForResponse('**/api/match/compute', { timeout: 15000 })
-    await page.goto('/match')
-    const response = await responsePromise
+    const response = await page.request.get('/api/match/compute')
     const body = await response.json()
     if (body.matches.length > 0) {
       const userId = body.matches[0].user_id

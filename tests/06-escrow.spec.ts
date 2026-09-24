@@ -40,9 +40,7 @@ test.describe('Escrow and Session Booking', () => {
 
   test('match API scores are between 0 and 1', async ({ page }) => {
     await loginAs(page, 'bola.fasanya@skillswap.test')
-    const responsePromise = page.waitForResponse('**/api/match/compute', { timeout: 15000 })
-    await page.goto('/match')
-    const response = await responsePromise
+    const response = await page.request.get('/api/match/compute')
     const body = await response.json()
     body.matches.forEach((m: any) => {
       expect(m.score).toBeGreaterThanOrEqual(0)
