@@ -1451,3 +1451,366 @@ $ echo $?
 ```
 
 Clean.
+
+---
+
+# Verification queue not showing submitted documents — 2026-10-04
+
+## Investigation
+
+### 1 — did the query select `file_url` and `doc_type`?
+
+No. `src/app/(superadmin)/superadmin/verification/page.tsx`'s `pendingUsers`
+query selected `user_id, full_name, email, verification_status,
+linkedin_url, github_url, portfolio_url, created_at` plus a nested
+`user_skills(...)` — it never referenced `verification_documents` at all.
+Confirmed by reading `src/components/SuperAdminVerificationClient.tsx` too:
+its `PendingUser` interface and JSX have a "Submitted Links" section but no
+field or section for documents whatsoever. The page wasn't failing to
+*render* the documents — it was never given them in the first place.
+
+### 2 — is `file_url` a usable URL or just a storage path?
+
+Just a path. `src/lib/actions/verification.ts`'s upload saves
+`file_url: uploadData.path` — Supabase Storage's `.upload()` return value,
+which is the object path inside the bucket (e.g.
+`"<user_id>/<timestamp>_<filename>.pdf"`), not a URL. And
+`verification-docs` is a private bucket (`public: false`, confirmed via
+`admin.storage.listBuckets()` earlier this project), so even if it were
+treated as a URL fragment it wouldn't resolve to anything accessible
+without a signed URL.
+
+### 3 — signed URL generation
+
+Added it in `page.tsx`, using `admin.storage.from('verification-docs').createSignedUrl(doc.file_url, 60 * 60)`
+exactly as specified, one hour expiry. Done server-side (the page is a
+server component with the admin client already instantiated), in parallel
+across all pending users' documents via `Promise.all`. A failed
+`createSignedUrl` call is logged and the document is still included with
+`signed_url: null`, rather than silently dropped, so the client can show
+it as "(unavailable)" instead of just disappearing.
+
+### 4 — clickable rendering
+
+`SuperAdminVerificationClient.tsx`: added a `documents` field to
+`PendingUser`, and a new "Submitted Documents" section (next to the
+existing "Submitted Links" one) rendering each as `<a href={signed_url}
+target="_blank">` with the filename, a human-readable file size, and an
+"open in new tab" icon. A document whose signed URL failed to generate
+renders as a non-clickable red "(unavailable)" chip instead of a link,
+rather than being silently omitted.
+
+## Files modified
+
+- `src/app/(superadmin)/superadmin/verification/page.tsx` — added
+  `verification_documents(...)` to the existing query's nested select;
+  added the signed-URL generation step.
+- `src/components/SuperAdminVerificationClient.tsx` — added `documents`
+  to the `PendingUser` type, a `formatFileSize` helper, and the
+  "Submitted Documents" render section.
+
+## TypeScript output
+
+```
+$ npx tsc --noEmit
+(no output)
+$ echo $?
+0
+```
+
+Clean.
+
+## Verification performed (actually ran the app, not just typechecked)
+
+First attempt combined a full registration+upload flow and a super-admin
+login+check into one Playwright test; it twice ran into this session's
+well-documented machine-load issues (cold dev-server compiles eating the
+test's time budget) and never got far enough to be useful. Rather than
+keep fighting that, split verification into two faster, more targeted
+checks:
+
+1. **Direct proof the signed-URL mechanism works**, no browser involved:
+   queried the most recent `verification_documents` row (left over from
+   the stalled Playwright attempts, which had gotten far enough to
+   actually upload real files before timing out later in the flow),
+   called `createSignedUrl` on it exactly as the fix does, then `fetch`'d
+   the resulting URL directly. Result: `200`, `content-type:
+   application/pdf`, body matched the uploaded file's content exactly.
+2. **Short, single-phase UI check**: logged in as the super admin
+   directly (not through a preceding registration flow — the first
+   attempt's leftover test data already had real documents in the
+   bucket) and loaded `/superadmin/verification`. Found **4 real,
+   clickable document links** rendered on the page; fetched the first
+   one's `href` and got the same `200` / `application/pdf` result as the
+   direct check. Confirmed visually via screenshot too — including that
+   a user with a genuinely empty submission (`nath54158129@gmail.com`,
+   a real account, `verification_status: 'pending'`) correctly still
+   shows "No documents uploaded" rather than breaking.
+
+One note on `loginAs()` (the shared test helper): it waits for
+`**/dashboard` after submitting login, which only matches `admin`/`user`
+roles — a `super_admin` login redirects to `/superadmin` instead (see
+`src/app/(auth)/login/page.tsx`), so `loginAs()` would always time out for
+this account. Didn't touch the shared helper (out of scope for this
+task); the verification scripts just logged in manually instead.
+
+**Cleanup:** deleted the 4 throwaway `docsfix_*@skillswap.test` accounts
+created during verification, along with their uploaded files, DB rows,
+and transactions — nothing from this debugging session was left behind.
+The 5th document found during investigation
+(`17-short-specializations-certificate-tolulope-fadare.png`, under a real
+user's account) was left untouched — it's real data, not mine.
+
+---
+
+# Skill scoring/proficiency interface — investigation and fix — 2026-10-04
+
+## Investigation
+
+### 1 — do `admin_score` and `proficiency_label` exist on `user_skills`?
+
+Yes, confirmed (again) directly against the queries and updates already
+referencing them — `supabase/migrations/011_superadmin_and_verification.sql`
+added both, matching what Part 2 below actually saves.
+
+### 2 — does the approve action save them?
+
+Not directly, and worth being precise about: `/api/admin/verify/route.ts`
+(the endpoint the "Approve and Verify" button calls) only ever touches the
+`users` table (`verification_status`, `admin_verified`, credit grant) — it
+never writes to `user_skills`. That save happens through a **separate**
+endpoint, `/api/admin/skills/route.ts` (PATCH), called once per scored
+skill from the client (`handleVerify` in `SuperAdminVerificationClient.tsx`)
+*before* it calls `/api/admin/verify`. So the save does happen as part of
+clicking "Approve" (both calls fire from the same click), just via two
+HTTP requests rather than one atomic one. This part was already correct
+and already saving both columns — confirmed by checking the live
+`user_skills` row after a real approval (see below).
+
+### 3/4 — was the rating UI actually missing, and why?
+
+Reading `SuperAdminVerificationClient.tsx` showed a star-rating UI (1–5
+buttons per teach skill) and an auto-derived Beginner/Intermediate/Expert
+badge **already existed** in code and was already wired to save via
+`/api/admin/skills`. That contradicted the bug report, so I checked the
+*live* pending queue data directly rather than trust either the code read
+or the report: the only real pending submission right now
+(`nath54158129@gmail.com`) has **zero teach skills**. The "Score Each
+Skill" section was conditionally rendered only when `teach_skills.length
+> 0` — for this user it silently rendered nothing, which is exactly what
+"missing" looks like from the super admin's side, even though the
+underlying mechanism works fine for a user who has added skills.
+
+Separately, re-reading the task's literal ask against the existing code
+turned up a real gap: the task asks for "a dropdown or button group to
+select Beginner / Intermediate / Expert" as its own control, distinct
+from the stars. The existing implementation only ever *derived* the label
+from the score (1–2→Beginner, 3–4→Intermediate, 5→Expert) with no way to
+set it independently.
+
+## Fixes made
+
+- **`src/components/SuperAdminVerificationClient.tsx`**:
+  - "Score Each Skill" now always renders its header; when
+    `teach_skills` is empty it shows an explicit message ("This user
+    hasn't added any skills to teach yet...") instead of rendering
+    nothing, so a zero-skill submission no longer looks broken.
+  - Added an independent Beginner/Intermediate/Expert button group next
+    to the stars for each skill. Clicking a star still sets a sensible
+    default label (same derivation as before) the first time, but once
+    the admin has explicitly picked a label it's no longer silently
+    overwritten by further star clicks — only an explicit label click
+    changes it after that.
+  - `handleVerify` now sends the (possibly overridden) label explicitly
+    to `/api/admin/skills`, and checks each skill-score save's response —
+    if any fail, approval is cancelled with a visible error instead of
+    silently proceeding with incomplete data (previously the `fetch`
+    calls' results were never checked at all).
+- **`src/app/api/admin/skills/route.ts`**: now accepts an optional
+  `label` in the request body and uses it when it's one of the three
+  valid values, falling back to the score-derived default otherwise —
+  additive, so any other caller sending just `{ userSkillId, score }`
+  still works exactly as before.
+
+### 5 — an unrelated real bug found while verifying this
+
+Confirming "does the label appear on the public profile after approval"
+surfaced a separate, pre-existing bug: `src/app/(app)/profile/[userId]/page.tsx`
+reads `user_skills` with the RLS-bound client, but that query returned
+**zero rows** for any viewer other than the skill's owner — silently,
+no error. Traced it to `supabase/migrations/012_user_skills_public_read.sql`,
+which adds an unconditional public-read policy for this exact table and
+explicitly exists *because* of this symptom (its own comment describes
+the identical bug) — but testing directly as a non-owner authenticated
+user proved that policy isn't actually in effect on the live database,
+even though the migration file exists in the repo. This project has no
+Supabase CLI / tracked-migration setup (confirmed: no `config.toml`, no
+migration-application docs), so migration files here appear to be applied
+manually and this one apparently never was, even though 011 clearly was
+(its columns are in active use everywhere).
+
+I don't have a way to run raw SQL against this database from here (no
+`exec_sql`-style RPC is exposed, confirmed by probing). Fixed it at the
+application layer instead: `profile/[userId]/page.tsx` now reads both
+`teachSkills` and `learnSkills` via the admin client rather than the
+RLS-bound one — the same pattern already used for match candidates
+(`api/match/compute/route.ts`) and verification-document signed URLs,
+and defensible here for the same reason migration 012 gives: this data
+is meant to be fully public, so bypassing RLS for it isn't a workaround
+for something sensitive.
+
+**For defense-in-depth, run this once in the Supabase SQL editor** (it's
+exactly `supabase/migrations/012_user_skills_public_read.sql`, which
+apparently never got applied):
+
+```sql
+CREATE POLICY user_skills_select_public ON user_skills
+  FOR SELECT TO authenticated
+  USING (true);
+```
+
+Not required for the app to work correctly now (the admin-client fix
+handles it), but other future code paths that assume this policy exists
+and use the regular client would hit the identical silent-empty-result
+bug otherwise.
+
+## TypeScript output
+
+```
+$ npx tsc --noEmit
+(no output)
+$ echo $?
+0
+```
+
+Clean.
+
+## Verification performed (real approvals, not just typechecking)
+
+Created one throwaway test account directly via the admin API (skipping
+the full registration flow this time, to avoid the longer end-to-end
+path) with one teach skill and `verification_status: 'under_review'`.
+Logged in as the super admin and drove the actual UI:
+
+1. Confirmed the zero-skills message renders for the real pending user
+   with no skills (`nath54158129@gmail.com`) — not simulated, the actual
+   live queue.
+2. Clicked 3 stars for the test skill, then **overrode the label to
+   "Expert"** (which a score of 3 would never auto-derive — that's
+   "Intermediate") — this specifically exercises the new override path,
+   not just the pre-existing auto-derive behavior.
+3. Clicked "Approve and Verify"; got the success message.
+4. Queried the database directly afterward:
+   `admin_score: 3, proficiency_label: 'Expert'` — the **overridden**
+   value, conclusively proving the override is what actually got saved,
+   not a coincidence of the derived default.
+5. Visited the user's public profile as a different logged-in user (the
+   super admin, viewing someone else's profile) — before the RLS fix
+   this returned zero rows and the "Skills they teach" section didn't
+   render at all (caught via a failed test screenshot); after the fix,
+   confirmed both by a passing test and a screenshot showing "Microsoft
+   Office — Expert · 3★" rendered correctly.
+
+All throwaway test data (the test account, its skill, and transactions)
+deleted afterward — nothing left behind from this investigation.
+
+---
+
+# Match page not showing newly verified users — investigation and fix — 2026-10-04
+
+## 1 — is there a filter on `is_verified`/`admin_verified` in the compute route?
+
+No — already removed in an earlier session (see "Registration flow fix +
+match page visibility" above, which replaced `.eq('is_verified', true)`
+with a JS-side teach+learn skill check). Re-read
+`src/app/api/match/compute/route.ts` fresh to confirm rather than trust
+the earlier write-up: lines 148–153 filter candidates on `hasTeach &&
+hasLearn` only, with a comment explicitly stating "All users are now
+eligible as match candidates regardless of admin/email verification."
+Nothing to remove here. Confirmed empirically too (not just by reading):
+queried the 6 most recently `admin_verified` users directly — the two
+that *do* have both a teach and a learn skill
+(`oluwatosin5383@gmail.com`, `tosin5383@gmail.com`, verified today and
+weeks ago respectively) are not excluded by anything in this route.
+
+## 2 — Next.js caching
+
+Checked this project's actual installed Next.js version (16.2.10) and its
+bundled docs rather than assume — `cacheComponents` is **not** enabled in
+`next.config.ts`, so the applicable model is the "Previous Model" guide
+(`node_modules/next/dist/docs/01-app/02-guides/caching-without-cache-components.md`),
+where **fetch requests are not cached by default** — caching only
+happens if a request explicitly sets `cache: 'force-cache'`, which
+nothing in this codebase does. The match page also already calls
+`supabase.auth.getUser()` (a cookie/Request-time API), which per Next's
+own fetch docs means any fetch discovered after that point in the same
+request is already excluded from caching by default. So there wasn't an
+actual caching bug causing this — but added the requested safeguards
+anyway, for explicitness/defense-in-depth:
+
+- `src/app/(app)/match/page.tsx`: added `export const revalidate = 0`.
+- `src/app/api/match/compute/route.ts`: added `export const revalidate = 0`.
+- `src/lib/supabase/admin.ts`: `createAdminClient()` now takes an
+  optional `{ noStore: true }` that passes a custom `fetch` forcing
+  `cache: 'no-store'` on every request the client makes. Scoped as an
+  opt-in rather than changed globally, since `createAdminClient()` is
+  also used by several unrelated routes (verification queue, skills
+  scoring, etc.) that weren't part of this bug report — only
+  `api/match/compute/route.ts` now passes `{ noStore: true }`.
+
+## 3 — does the test user actually have both a teach and a learn skill?
+
+This is the real answer. Queried the 6 most recently `admin_verified`
+users directly against the live database:
+
+```
+akinlolufadare1643@gmail.com | verified 2026-10-04T13:21 | teach=false learn=false (0 skills)
+oluwatosin5383@gmail.com     | verified 2026-10-04T13:20 | teach=true  learn=true  (2 skills)
+feliciakehinde27@gmail.com   | verified 2026-10-04T13:17 | teach=false learn=false (0 skills)
+tosinfad305@gmail.com        | verified 2026-10-04T13:12 | teach=false learn=false (0 skills)
+tosin5383@gmail.com          | verified 2026-10-04T13:05 | teach=true  learn=true  (5 skills)
+amaka.okonkwo@skillswap.test | verified 2026-09-13       | teach=true  learn=true  (5 skills)
+```
+
+The most recently verified account has **zero** `user_skills` rows, and
+two of the other three recently-verified accounts do too. This is
+exactly the "not a bug" case step 3 describes — these accounts correctly
+don't appear on the match page because they have no skills, not because
+of any filter or cache issue. Three of these look like real accounts
+(one is your own email), so I didn't add skills to them without asking —
+no code or data changes were made to any of these.
+
+## 4 — confirming the fix works for a user who does have skills
+
+Created one disposable test account directly via the admin API
+(`admin_verified: true`, one teach skill, one learn skill chosen to
+overlap with `amaka.okonkwo@skillswap.test`'s existing skills in both
+directions), then logged in as `amaka.okonkwo` and loaded `/match` for
+real in a browser (Playwright), with **no server restart** between
+creating the account and loading the page — this is the actual "one
+reload" scenario the task describes. The test user appeared immediately,
+as the top-ranked match (40%), with the correct skill name and a
+"Verified" pill. Screenshot taken during verification, not committed
+(matches `.gitignore`'s `/tests/screenshots/`). The disposable account,
+its skills, and its transactions were deleted afterward.
+
+## TypeScript output
+
+```
+$ npx tsc --noEmit
+(no output)
+$ echo $?
+0
+```
+
+Clean.
+
+## Commit and push
+
+```
+$ git add .
+$ git commit -m "Fix verification docs display, proficiency rating UI, and match page cache for new verified users"
+$ git push origin master
+```
+
+See the commit hash below.

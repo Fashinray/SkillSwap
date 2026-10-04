@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import ProficiencyBadge from '@/components/ProficiencyBadge'
 
@@ -23,13 +24,28 @@ export default async function PublicProfilePage({
 
   if (!profile) redirect('/match')
 
-  const { data: teachSkills } = await supabase
+  // Skills are meant to be public browsing info (same as reputation score
+  // and the trusted badge) — supabase/migrations/012_user_skills_public_read.sql
+  // adds an unconditional SELECT policy for this exact reason, but that
+  // policy isn't actually in effect on the live database (confirmed: the
+  // RLS-bound client silently returns zero rows here for any viewer who
+  // isn't the skill owner, an admin, or a session partner — the original,
+  // narrower policy from migration 002). Using the admin client for this
+  // read is the same pattern already used for match candidates
+  // (src/app/api/match/compute/route.ts) and verification document signed
+  // URLs — bypassing RLS here is intentional and safe since this data is
+  // meant to be fully public, not a workaround for sensitive data. The
+  // migration 012 policy should still be applied via the Supabase SQL
+  // editor for defense-in-depth; see BUILDER_OUTPUT.md.
+  const admin = createAdminClient()
+
+  const { data: teachSkills } = await admin
     .from('user_skills')
     .select('user_skill_id, role, admin_score, proficiency_label, skills(name, tier, category)')
     .eq('user_id', userId)
     .eq('role', 'teach')
 
-  const { data: learnSkills } = await supabase
+  const { data: learnSkills } = await admin
     .from('user_skills')
     .select('user_skill_id, skills(name, tier, category)')
     .eq('user_id', userId)

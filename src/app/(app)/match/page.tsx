@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+
+export const revalidate = 0
 import IncomingRequests, { type IncomingMatchRequest } from '@/components/IncomingRequests'
 import MatchFilters from '@/components/match/MatchFilters'
 import MatchCard, { type MatchCardProps } from '@/components/match/MatchCard'

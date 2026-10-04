@@ -92,9 +92,11 @@ async function computePastSessionHistory(
   return 0
 }
 
+export const revalidate = 0
+
 export async function GET() {
   const supabase = await createClient()
-  const admin = createAdminClient()
+  const admin = createAdminClient({ noStore: true })
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {

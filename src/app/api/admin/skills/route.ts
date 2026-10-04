@@ -16,12 +16,19 @@ export async function PATCH(request: Request) {
   const adminUser = await requireAdminOrSuperAdmin()
   if (!adminUser) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
 
-  const { userSkillId, score } = await request.json()
+  const { userSkillId, score, label: requestedLabel } = await request.json()
   if (!score || score < 1 || score > 5) {
     return NextResponse.json({ error: 'Score must be 1 to 5' }, { status: 400 })
   }
 
-  const label = score <= 2 ? 'Beginner' : score <= 4 ? 'Intermediate' : 'Expert'
+  const validLabels = ['Beginner', 'Intermediate', 'Expert']
+  // The super admin can override the auto-derived label (e.g. a 5-star
+  // skill the admin still wants to mark "Intermediate"); fall back to the
+  // score-derived default when no explicit label is sent, so existing
+  // callers that only send { userSkillId, score } keep working unchanged.
+  const label = validLabels.includes(requestedLabel)
+    ? requestedLabel
+    : score <= 2 ? 'Beginner' : score <= 4 ? 'Intermediate' : 'Expert'
   const admin = createAdminClient()
   const { error } = await admin
     .from('user_skills')
