@@ -13,6 +13,14 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.verifyOtp({ type, token_hash })
 
     if (!error && data.user) {
+      // A password-reset link: the user hasn't actually set a new
+      // password yet (verifyOtp just confirms identity and opens a
+      // session), and they're an existing user, not someone newly
+      // verifying — granting starter credits again and dropping them on
+      // the dashboard would both be wrong here.
+      if (type === 'recovery') {
+        return NextResponse.redirect(`${origin}/reset-password`)
+      }
       const result = await grantStarterCredits(data.user.id)
       console.log('auth/confirm: grantStarterCredits result', result)
       return NextResponse.redirect(`${origin}/dashboard`)

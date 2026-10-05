@@ -2153,5 +2153,84 @@ Clean.
 
 ## Commit and push
 
-Pending — about to commit and push the cancel-request fix now. Forgot
-password is not included in this commit; it's still unbuilt.
+```
+$ git add .
+$ git commit -m "Add ability to cancel a sent match request before it's answered"
+[master d6139d3] Add ability to cancel a sent match request before it's answered
+ 5 files changed, 189 insertions(+), 8 deletions(-)
+$ git push origin master
+   2df005c..d6139d3  master -> master
+```
+
+Pushed as **`d6139d3`**. Forgot password is not included in this
+commit; it's still unbuilt.
+
+---
+
+# Forgot password — built — 2026-10-05
+
+Built the feature per the plan from the previous entry.
+
+## Files
+
+- **`src/app/(auth)/login/page.tsx`**: added a "Forgot password?" link
+  next to the Password label, pointing to `/forgot-password`.
+- **`src/app/(auth)/forgot-password/page.tsx`** (new): email form calling
+  `supabase.auth.resetPasswordForEmail(email, { redirectTo:
+  \`${NEXT_PUBLIC_APP_URL}/auth/confirm\` })`. Always shows the same
+  "check your email" success state regardless of whether the address
+  actually has an account — doesn't let this page be used to probe which
+  emails are registered.
+- **`src/app/(auth)/reset-password/page.tsx`** (new): new
+  password + confirm-password form (same two-field pattern the signup
+  page already uses), calls `supabase.auth.updateUser({ password })`.
+  This only works because `/auth/confirm`'s `verifyOtp` call already
+  established a real session by the time the user lands here — no
+  separate token handling needed on this page.
+- **`src/app/auth/confirm/route.ts`**: added a `type === 'recovery'`
+  branch. Previously this route always called `grantStarterCredits` and
+  redirected to `/dashboard` for every verified link — wrong for a
+  password reset, since the user hasn't actually set a new password yet
+  and is an existing user, not someone newly verifying. Recovery links
+  now skip the credit grant and redirect to `/reset-password` instead.
+- **`src/proxy.ts`**: added `/forgot-password` and `/reset-password` to
+  `publicPaths`.
+
+## Verification performed
+
+Avoided depending on real email delivery for testing — this project has
+had intermittent email-service issues all session (see the September
+debug entries above), and Supabase's admin API has a cleaner path
+anyway: `admin.auth.admin.generateLink({ type: 'recovery', email })`
+returns a real, usable `hashed_token` without sending an actual email.
+
+Drove the complete real flow in a browser:
+1. Navigated to `/auth/confirm?token_hash=<real token>&type=recovery`
+   (what clicking the real email link produces) — confirmed it redirects
+   to `/reset-password`, not `/dashboard`.
+2. Submitted a new password — confirmed redirect to `/dashboard`.
+3. Signed out, then logged in again with the **new** password — this is
+   the real proof the whole chain actually works, not just that each
+   page rendered. Succeeded.
+4. Separately, tested `/forgot-password` itself: submitted an email,
+   confirmed the success-state UI appears (the actual
+   `resetPasswordForEmail` call, not mocked).
+
+One false alarm during testing, worth noting: a recovery token is
+single-use — my first test run's slow page compile caused a timeout
+*after* the token had already been consumed by a successful
+`verifyOtp` call, so a naive retry with the same token correctly failed
+server-side (`AuthApiError: Email link is invalid or has expired`).
+Not an app bug — generating a fresh token per attempt resolved it.
+Disposable account deleted afterward.
+
+## TypeScript output
+
+```
+$ npx tsc --noEmit
+(no output)
+$ echo $?
+0
+```
+
+Clean.
