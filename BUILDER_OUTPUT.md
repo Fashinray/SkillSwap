@@ -1788,7 +1788,7 @@ overlap with `amaka.okonkwo@skillswap.test`'s existing skills in both
 directions), then logged in as `amaka.okonkwo` and loaded `/match` for
 real in a browser (Playwright), with **no server restart** between
 creating the account and loading the page — this is the actual "one
-reload" scenario the task describes. The test user appeared immediately,
+reload" scenario the task describes. The test user appearecd skillswapd immediately,
 as the top-ranked match (40%), with the correct skill name and a
 "Verified" pill. Screenshot taken during verification, not committed
 (matches `.gitignore`'s `/tests/screenshots/`). The disposable account,
@@ -1810,7 +1810,227 @@ Clean.
 ```
 $ git add .
 $ git commit -m "Fix verification docs display, proficiency rating UI, and match page cache for new verified users"
+[master eeee8b5] Fix verification docs display, proficiency rating UI, and match page cache for new verified users
+ 8 files changed, 595 insertions(+), 66 deletions(-)
 $ git push origin master
+   e2e9b53..eeee8b5  master -> master
 ```
 
-See the commit hash below.
+Pushed as **`eeee8b5`**.
+
+---
+
+# Screen sharing not working for the tutor on mobile — 2026-10-04
+
+Reported as "I can't [share] my screen as the tutor." Clarified with the
+user first rather than guess: the "Share Screen" button is visible, but
+clicking it does nothing, and they're on a mobile phone/tablet.
+
+## Root cause
+
+Not a bug introduced by this app — `getDisplayMedia` (the Screen Capture
+API) isn't implemented on **any** mobile browser (iOS Safari, Android
+Chrome/Firefox/Samsung Internet all lack it; it's desktop-only across the
+board). `src/components/SessionRoom.tsx`'s `startScreenShare()` called it
+unconditionally, so on mobile the call throws immediately
+(`navigator.mediaDevices.getDisplayMedia is not a function`). The
+`catch` block did set an error message, but via `setActionMsg`, which
+renders in `sessionControlsPanel` — a different panel from the video
+call, styled green (`text-emerald-600`, the same color used for success
+messages elsewhere in this component) — so in practice the error was
+there but effectively invisible. From the tutor's side this looked
+exactly like "nothing happens."
+
+## Fix
+
+`src/components/SessionRoom.tsx`:
+
+- Added `canShareScreen` state, set via `useEffect` (not inline during
+  render, to stay SSR-safe) from
+  `!!navigator.mediaDevices?.getDisplayMedia`. When the presenter's
+  browser doesn't support it, the Share Screen button is no longer
+  rendered at all — replaced with a plain-text explanation ("Screen
+  sharing isn't supported on this device's browser — use a desktop
+  browser (Chrome, Edge, or Firefox) instead.") so there's nothing to
+  click that silently fails.
+- `startScreenShare()` now checks support before attempting the call
+  (same message, for the edge case where `canShareScreen` hasn't synced
+  yet) and routes all failures through `callError` instead of
+  `actionMsg` — the existing red error banner that already sits directly
+  under the "Video Call" header, not a different panel. Also
+  distinguishes a permission denial (`NotAllowedError`) from other
+  failures in the message shown.
+
+No changes to desktop behavior — `canShareScreen` defaults to `true`
+until the effect runs, so there's no flash of "unsupported" for desktop
+users, and the real button/flow is untouched there.
+
+## Verification performed
+
+Built a disposable active session (two throwaway accounts, one as
+teacher) and drove it with Playwright using Chromium's fake-media-device
+flags (`--use-fake-device-for-media-stream`,
+`--use-fake-ui-for-media-stream`) so a real call could start headlessly:
+
+- **Mobile simulation**: an init script shadowed
+  `navigator.mediaDevices.getDisplayMedia` to `undefined` before any page
+  script ran (note: `delete`ing it is a no-op since the real method lives
+  on `MediaDevices.prototype`, not the instance — had to overwrite it
+  instead, confirmed by the first attempt not changing behavior).
+  Logged in as the teacher, started the call, confirmed **zero** "Share
+  Screen" buttons exist and the explanation text is visible instead.
+  Screenshot confirms it visually, message in the correct place, right
+  next to "End Call."
+- **Desktop (unmodified `getDisplayMedia`)**: same flow, confirmed the
+  real "Share Screen" button still renders normally — the fix doesn't
+  regress the working case.
+
+Disposable accounts, session, and chat messages deleted afterward.
+
+## TypeScript output
+
+```
+$ npx tsc --noEmit
+(no output)
+$ echo $?
+0
+```
+
+Clean.
+
+---
+
+# Screen share goes blank on both sides (real bug, not WebRTC/network) — 2026-10-04
+
+Follow-up on the entry above. User reported screen sharing "still not
+working" on the live site — clarified it's actually two separate things:
+
+1. The previous fix (mobile `getDisplayMedia` detection) was committed
+   locally but never pushed, so the live site was still running the old
+   code. Still needs a push.
+2. **A real, new bug**: on desktop, once in a call, clicking "Share
+   Screen" successfully starts capture, but the shared screen renders as
+   a blank/black video — for both the presenter and the remote viewer —
+   and the camera that was working before also goes blank.
+
+Initially suspected a WebRTC/TURN issue (confirmed separately that the
+Metered TURN API key in `.env.local` was returning `{"error":"Invalid
+API Key"}` directly from Metered's own endpoint, and that the live site
+was falling back to STUN-only) — user clarified the key is fine, so that
+line of investigation was dropped and the actual report (blank screen
+specifically when sharing starts) was investigated directly instead.
+
+## Root cause
+
+A React reconciliation bug in `src/components/SessionRoom.tsx`, not a
+WebRTC or network problem at all. The page's bottom layout branched into
+two **differently-shaped** DOM trees depending on `isSharingActive`:
+
+```tsx
+{isSharingActive ? (
+  <div className="space-y-4">
+    {videoPanel}
+    <div className="grid ...">...</div>
+  </div>
+) : (
+  <div className="grid ...">
+    <div className="lg:col-span-2">{chatPanel}</div>
+    <div className="space-y-4">
+      {videoPanel}
+      {sessionControlsPanel}
+    </div>
+  </div>
+)}
+```
+
+`videoPanel` sat at a different depth and under a different parent
+element in each branch. React can't match these up across a re-render —
+it unmounts the entire subtree and mounts a fresh one. `videoPanel`
+contains both `<video>` elements, and their media streams are attached
+**imperatively**, outside React's normal render cycle: the local one via
+a `useEffect` keyed on `[localStream, callState]` (neither of which
+changes when screen sharing starts, so the effect never re-fires for a
+freshly mounted node), and the remote one exactly once, inside
+`pc.ontrack` (which never fires again for a `replaceTrack()` call — no
+renegotiation happens for a same-kind track swap). So the instant
+`isSharingActive` flipped to `true`, both `<video>` elements were
+destroyed and recreated with no stream reattached — blank for the
+presenter's own preview (now meant to show the screen) and blank for the
+remote viewer (who should still be seeing *something*, screen or
+camera), exactly matching "I want both the camera and the share screen
+to work."
+
+## Fix
+
+Restructured the layout so `videoPanel`'s wrapper is **always** the
+first child of the same outer container, in both states — same element
+type, same position, every render. Only `chatPanel`/`sessionControlsPanel`
+(which hold no persistent media refs, so remounting them is harmless)
+restructure around it, using CSS classes rather than different JSX
+branches, to preserve the original two visual layouts (video+controls
+stacked beside a wide chat panel when not sharing; full-width video above
+a chat+controls row when sharing).
+
+## Verification performed
+
+Built a disposable two-person active session (two throwaway accounts)
+and drove a **real** two-peer WebRTC call with Playwright — two separate
+browser contexts, real Supabase Realtime signalling, real
+offer/answer/ICE exchange, Chromium's fake-camera flags for
+`getUserMedia`, and a stubbed `getDisplayMedia` returning a solid-blue
+`canvas.captureStream()` (isolates the actual bug — DOM remount — from
+headless Chromium's unrelated real-screen-picker limitations):
+
+- Confirmed the learner was genuinely receiving the teacher's camera
+  track before screen sharing started (polled, not assumed).
+- Tagged both participants' `<video>` DOM nodes with a marker attribute,
+  then had the teacher start screen sharing, then confirmed **the exact
+  same DOM nodes were still present** on both sides afterward — proving
+  no remount occurred (this is what the fix actually targets).
+- Confirmed the teacher's own local preview still had a live stream
+  after switching to screen share.
+- Confirmed the learner's remote `<video>` still had a live video track
+  after the switch, **and**, going further than "has a track," sampled
+  an actual rendered pixel from the video element via an offscreen
+  canvas: `{ r: 2, g: 1, b: 254 }` — genuinely painting the shared blue
+  content, not just holding a stale track reference. A screenshot
+  confirms it visually: the learner's main video shows the blue shared
+  screen, with the teacher's own camera correctly still running as the
+  small local preview on their own side.
+- One intermediate run caught a transient black frame on the very first
+  screenshot after the switch (plausible codec/keyframe settling, not
+  the remount bug — the DOM-node-identity check in the same run already
+  confirmed no remount happened). The pixel check above, on a later run
+  with the exact same code, confirmed it resolves to real content within
+  the wait window — not a persistent issue.
+
+Disposable accounts, session, and chat messages deleted afterward.
+
+## Separate issue noticed, not fixed (out of scope here)
+
+`.next/dev/logs/next-development.log` shows repeated server-side
+`ReferenceError: window is not defined` during this session's test runs.
+Traced to `src/components/CameraTest.tsx`, which references
+`window.isSecureContext` directly inside its render output (unconditional,
+not behind a client-only check) — since `'use client'` components still
+render once on the server for the initial HTML, this throws every time a
+session room with `isActive` true is server-rendered (it renders
+`<CameraTest />` whenever `callState === 'idle'`). Not touched this
+round — flagging since it's a real, separate bug worth its own fix.
+
+## TypeScript output
+
+```
+$ npx tsc --noEmit
+(no output)
+$ echo $?
+0
+```
+
+Clean.
+
+## Still pending
+
+The mobile `getDisplayMedia` detection fix from the previous entry is
+still only local — not yet pushed. Both that fix and this one are ready
+to go out together whenever you want them pushed.

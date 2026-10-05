@@ -139,6 +139,17 @@ export default function SessionRoom({
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
   const [showHandoffPrompt, setShowHandoffPrompt] = useState(false)
   const screenStreamRef = useRef<MediaStream | null>(null)
+  // getDisplayMedia (the Screen Capture API) isn't implemented on any
+  // mobile browser — not iOS Safari, not Android Chrome/Firefox/Samsung
+  // Internet. Without this check the "Share Screen" button renders and
+  // looks clickable on a phone, but calling it throws immediately and the
+  // only feedback was a stray green success-styled line in an unrelated
+  // panel — effectively invisible. Default true (not false) so desktop
+  // users don't see a flash of "not supported" before this effect runs.
+  const [canShareScreen, setCanShareScreen] = useState(true)
+  useEffect(() => {
+    setCanShareScreen(!!navigator.mediaDevices?.getDisplayMedia)
+  }, [])
 
   const isActive = ['scheduled', 'active'].includes(sessionStatus)
   const isPresenter = currentUserId === presenterId
@@ -491,6 +502,15 @@ export default function SessionRoom({
 
   async function startScreenShare() {
     if (callState !== 'in-call' || !isPresenter) return
+    setCallError('')
+
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setCallError(
+        'Screen sharing isn\'t supported in mobile browsers. Use a desktop browser (Chrome, Edge, or Firefox) to share your screen.'
+      )
+      return
+    }
+
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true })
       const screenTrack = screenStream.getVideoTracks()[0]
@@ -513,9 +533,13 @@ export default function SessionRoom({
         event: 'signal',
         payload: { type: 'screen-share-started', from: currentUserId, startedAt },
       })
-    } catch (e) {
+    } catch (e: any) {
       console.error('Screen share error', e)
-      setActionMsg('Could not start screen sharing.')
+      if (e?.name === 'NotAllowedError') {
+        setCallError('Screen share permission denied or cancelled.')
+      } else {
+        setCallError(`Could not start screen sharing: ${e?.message ?? 'unknown error'}.`)
+      }
     }
   }
 
@@ -666,13 +690,18 @@ export default function SessionRoom({
               >
                 Stop Sharing Screen
               </button>
-            ) : (
+            ) : canShareScreen ? (
               <button
                 onClick={startScreenShare}
                 className="w-full py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
               >
                 Share Screen
               </button>
+            ) : (
+              <p className="text-xs text-gray-400 text-center">
+                Screen sharing isn&apos;t supported on this device&apos;s browser —
+                use a desktop browser (Chrome, Edge, or Firefox) instead.
+              </p>
             )
           ) : (
             !isSharingActive && (
@@ -959,23 +988,38 @@ export default function SessionRoom({
         </div>
       </div>
 
-      {isSharingActive ? (
-        <div className="space-y-4">
+      {/*
+        videoPanel's <video> elements have their media streams attached
+        imperatively via refs (the local one via a useEffect keyed on
+        [localStream, callState]; the remote one only once, inside
+        pc.ontrack — nothing ever re-attaches it afterward). This block
+        used to branch into two differently-shaped trees depending on
+        isSharingActive (videoPanel nested two levels deep inside a grid
+        column vs. a direct child of a different wrapper), which React
+        can't reconcile across renders — it unmounted and remounted the
+        whole subtree the instant screen sharing started, destroying both
+        video elements and leaving them with no stream attached (blank
+        local preview AND blank remote feed, for both participants).
+        videoPanel's wrapper is now always the first child of this
+        container in both branches (same element type, same position) so
+        React keeps those DOM nodes — and their attached streams — alive
+        across the toggle. Only chat/controls restructure around it, since
+        they hold no persistent media refs.
+      */}
+      <div className={isSharingActive ? 'space-y-4' : 'grid grid-cols-1 lg:grid-cols-3 gap-4'}>
+        <div className={isSharingActive ? undefined : 'lg:col-span-1 lg:order-2 space-y-4'}>
           {videoPanel}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2">{chatPanel}</div>
-            <div>{sessionControlsPanel}</div>
-          </div>
+          {!isSharingActive && sessionControlsPanel}
         </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">{chatPanel}</div>
-          <div className="space-y-4">
-            {videoPanel}
-            {sessionControlsPanel}
-          </div>
+        <div className={isSharingActive ? 'grid grid-cols-1 lg:grid-cols-3 gap-4' : 'lg:col-span-2 lg:order-1'}>
+          {isSharingActive ? (
+            <>
+              <div className="lg:col-span-2">{chatPanel}</div>
+              <div>{sessionControlsPanel}</div>
+            </>
+          ) : chatPanel}
         </div>
-      )}
+      </div>
 
       {/* Peer review section */}
       {sessionStatus === 'completed' && (
