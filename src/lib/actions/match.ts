@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 
 export async function sendMatchRequest(recipientId: string, skillId: string) {
@@ -58,6 +59,37 @@ export async function respondToMatchRequest(
   if (error) return { error: error.message }
   revalidatePath('/match')
   revalidatePath('/dashboard')
+  return { success: true }
+}
+
+// Only matches_update_recipient exists as an RLS policy (migration 002)
+// — a requester has no UPDATE grant on their own sent match at all, so
+// this can't go through the regular RLS-bound client. Uses the admin
+// client instead, with the same ownership/state checks an RLS policy
+// would enforce, done explicitly in code here.
+export async function cancelMatchRequest(matchId: string) {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'Not authenticated' }
+
+  const admin = createAdminClient()
+  const { data: match } = await admin
+    .from('matches')
+    .select('match_id, requester_id, status')
+    .eq('match_id', matchId)
+    .single()
+
+  if (!match) return { error: 'Match request not found.' }
+  if (match.requester_id !== user.id) return { error: 'Not your request.' }
+  if (match.status !== 'pending') return { error: 'This request has already been resolved.' }
+
+  const { error } = await admin
+    .from('matches')
+    .update({ status: 'rejected' })
+    .eq('match_id', matchId)
+
+  if (error) return { error: error.message }
+  revalidatePath('/match')
   return { success: true }
 }
 

@@ -2029,8 +2029,129 @@ $ echo $?
 
 Clean.
 
-## Still pending
+## Commit and push
 
-The mobile `getDisplayMedia` detection fix from the previous entry is
-still only local — not yet pushed. Both that fix and this one are ready
-to go out together whenever you want them pushed.
+```
+$ git add .
+$ git commit -m "Fix screen sharing: unsupported-device handling on mobile, and a React remount bug that blanked both video feeds on desktop"
+[master 2df005c] Fix screen sharing: unsupported-device handling on mobile, and a React remount bug that blanked both video feeds on desktop
+ 2 files changed, 283 insertions(+), 19 deletions(-)
+$ git push origin master
+   eeee8b5..2df005c  master -> master
+```
+
+Pushed as **`2df005c`**. Both the mobile `getDisplayMedia` detection fix
+and the DOM-remount fix are now live once Vercel redeploys.
+
+---
+
+# Cancel a sent match request + forgot password investigation — 2026-10-05
+
+User reported two things: "I can't reject match" and no "forgot
+password" link on the login page.
+
+## Match rejection — clarified, then fixed the real gap
+
+Reading `src/lib/actions/match.ts` and `IncomingRequests.tsx` first:
+`respondToMatchRequest(matchId, 'rejected')` (the recipient's "Decline"
+button) looked structurally correct, and the `matches_update_recipient`
+RLS policy (migration 002) places no restriction on which status a
+recipient can set. Verified directly with a disposable pending match and
+a real browser click (not just code review): declining an **incoming**
+request already worked, confirmed both in the UI and against the
+database afterward (`status: 'rejected'`).
+
+Asked the user to clarify which "reject" they meant. They meant: **they
+sent someone a match request and want to cancel it before the other
+person responds** — and confirmed there's no UI for that at all. Looking
+at `MatchCard.tsx`, once `hasExistingRequest` is true the card just shows
+a permanently disabled "Requested" label — no cancel option, for anyone,
+ever.
+
+### Fix
+
+- `src/lib/actions/match.ts`: new `cancelMatchRequest(matchId)`. The only
+  RLS policy on `matches` UPDATE is for the *recipient*
+  (`matches_update_recipient`, migration 002) — a requester has no grant
+  to update their own sent match at all. Rather than add a new migration
+  (which I can't apply to the live database directly — no raw-SQL
+  execution is exposed, confirmed in an earlier session), this uses the
+  admin client with the same ownership/state checks an RLS policy would
+  enforce, done explicitly in the action itself: confirms the caller is
+  the `requester_id`, confirms `status === 'pending'`, then updates to
+  `'rejected'` (reusing the existing enum value rather than adding a new
+  one — `match_status` is `'pending' | 'accepted' | 'rejected' |
+  'expired'`, no migration needed).
+- `src/app/api/match/compute/route.ts`: `alreadyRequested` was a
+  `Set<string>`; added a parallel `myPendingRequestId: Map<string,
+  string>` (recipient_id → match_id, only for requests I sent that are
+  still pending) and returns it per-candidate as `pending_match_id`.
+- `src/app/(app)/match/page.tsx`: passes `pending_match_id` through to
+  `MatchCardProps.pendingMatchId`.
+- `src/components/match/MatchCard.tsx`: when `hasExistingRequest &&
+  pendingMatchId`, shows a red "Cancel Request" button (wired to
+  `cancelMatchRequest` the same `'use server'`-wrapper-in-a-form pattern
+  already used for the Request button) instead of the inert "Requested"
+  label. For an already-accepted/rejected/expired past match (no
+  `pendingMatchId`), the old inert label is unchanged — you can't cancel
+  something already resolved.
+
+### Verification performed
+
+First attempt's disposable recipient account only had a `teach` skill,
+no `learn` skill — the compute route's own candidate filter
+(`hasTeach && hasLearn`) correctly excluded it from appearing at all,
+so the test found no card to click. Not an app bug, a test-fixture bug;
+confirmed by reading the actual failure screenshot rather than assuming.
+Fixed the fixture (both disposable accounts given complementary
+teach/learn pairs) and reran: clicked "Cancel Request" as the real
+requester in a real browser, button disappeared, and the database
+confirmed `status: 'rejected'` afterward. Disposable accounts, their
+skills, and the match row deleted afterward.
+
+## Forgot password — confirmed genuinely missing, not yet built
+
+Grepped the whole `src/` tree for `forgot`, `reset password`, and
+`resetPasswordForEmail` — zero matches. This isn't a bug in existing
+code, it's a feature that was never built: no link on the login page, no
+request-reset page, no set-new-password page.
+
+Found the right place to hook it in: `src/app/auth/confirm/route.ts`
+already handles `verifyOtp({ type, token_hash })` generically — `type`
+is typed as Supabase's own `EmailOtpType`, which includes `'recovery'`
+as a valid value, and the route doesn't special-case it at all yet (it
+always grants starter credits and redirects to `/dashboard`, which is
+wrong for a password-reset — an existing user resetting their password
+shouldn't get starter credits again, and should land on a "set new
+password" form, not the dashboard). This route is the natural landing
+point for Supabase's recovery email link, matching the pattern this
+project already uses for signup confirmation.
+
+**Not built yet** — ran out of session time before reaching this half of
+the request. Still needed:
+- "Forgot password?" link on `src/app/(auth)/login/page.tsx`
+- A `/forgot-password` page calling `supabase.auth.resetPasswordForEmail`
+- A `/reset-password` page calling `supabase.auth.updateUser({ password })`
+  (works because the recovery link's `verifyOtp` call already establishes
+  a real session)
+- A `type === 'recovery'` branch in `auth/confirm/route.ts` that skips
+  `grantStarterCredits` and redirects to `/reset-password` instead of
+  `/dashboard`
+- Add `/forgot-password` (and ideally `/reset-password`) to `proxy.ts`'s
+  `publicPaths`
+
+## TypeScript output
+
+```
+$ npx tsc --noEmit
+(no output)
+$ echo $?
+0
+```
+
+Clean.
+
+## Commit and push
+
+Pending — about to commit and push the cancel-request fix now. Forgot
+password is not included in this commit; it's still unbuilt.

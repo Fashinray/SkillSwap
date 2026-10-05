@@ -160,14 +160,20 @@ export async function GET() {
 
   const { data: existingMatches } = await admin
     .from('matches')
-    .select('requester_id, recipient_id, status')
+    .select('match_id, requester_id, recipient_id, status')
     .or(`requester_id.eq.${user.id},recipient_id.eq.${user.id}`)
 
   const alreadyRequested = new Set<string>()
   const pendingFromThem = new Set<string>()
+  // recipient_id -> match_id, only for requests I sent that are still
+  // pending — the only state a sent request can be cancelled from.
+  const myPendingRequestId = new Map<string, string>()
   if (existingMatches) {
     existingMatches.forEach((m) => {
-      if (m.requester_id === user.id) alreadyRequested.add(m.recipient_id)
+      if (m.requester_id === user.id) {
+        alreadyRequested.add(m.recipient_id)
+        if (m.status === 'pending') myPendingRequestId.set(m.recipient_id, m.match_id)
+      }
       if (m.recipient_id === user.id && m.status === 'pending') pendingFromThem.add(m.requester_id)
     })
   }
@@ -211,6 +217,7 @@ export async function GET() {
         i_can_teach: sharedTeachLearn,
         is_trusted: (candidate as any).is_trusted ?? false,
         already_requested: alreadyRequested.has(candidate.user_id),
+        pending_match_id: myPendingRequestId.get(candidate.user_id) ?? null,
         pending_from_them: pendingFromThem.has(candidate.user_id),
       }
     })

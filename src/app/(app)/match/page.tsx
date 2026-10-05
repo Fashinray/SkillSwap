@@ -20,6 +20,7 @@ interface MatchApiCandidate {
   is_trusted: boolean
   already_requested: boolean
   pending_from_them: boolean
+  pending_match_id: string | null
 }
 
 const CATEGORY_TABS = [
@@ -149,6 +150,7 @@ export default async function MatchPage({ searchParams }: MatchPageProps) {
       compatibilityScore: candidate.score,
       category: teachSkill?.category,
       hasExistingRequest: candidate.already_requested,
+      pendingMatchId: candidate.pending_match_id ?? undefined,
       teachSkillId: requestSkillId,
     }
   })

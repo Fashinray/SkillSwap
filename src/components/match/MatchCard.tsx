@@ -1,6 +1,6 @@
 import Image from 'next/image'
 import Link from 'next/link'
-import { sendMatchRequest } from '@/lib/actions/match'
+import { sendMatchRequest, cancelMatchRequest } from '@/lib/actions/match'
 
 export interface MatchCardProps {
   userId: string
@@ -25,6 +25,9 @@ export interface MatchCardProps {
   // supabase/migrations/011_superadmin_and_verification.sql) — drives the
   // 3-state verification pill below.
   verificationStatus?: string
+  // Set only when I sent this candidate a request that's still pending —
+  // the one state a sent request can actually be cancelled from.
+  pendingMatchId?: string
 }
 
 const CATEGORY_GRADIENTS: Record<string, string> = {
@@ -128,6 +131,7 @@ export default function MatchCard({
   hasExistingRequest,
   teachSkillId,
   verificationStatus,
+  pendingMatchId,
 }: MatchCardProps) {
   const gradient = CATEGORY_GRADIENTS[category ?? ''] ?? 'from-indigo-500 to-purple-600'
   const tierLabel = TIER_LABELS[teachSkillTier]
@@ -158,6 +162,12 @@ export default function MatchCard({
     'use server'
     if (!teachSkillId) return
     await sendMatchRequest(userId, teachSkillId)
+  }
+
+  async function cancelRequest() {
+    'use server'
+    if (!pendingMatchId) return
+    await cancelMatchRequest(pendingMatchId)
   }
 
   return (
@@ -225,7 +235,16 @@ export default function MatchCard({
             View Profile
           </Link>
 
-          {hasExistingRequest ? (
+          {hasExistingRequest && pendingMatchId ? (
+            <form action={cancelRequest} className="flex-1">
+              <button
+                type="submit"
+                className="w-full rounded-xl px-4 py-2 text-sm font-semibold border border-red-200 text-red-600 hover:bg-red-50 transition-colors"
+              >
+                Cancel Request
+              </button>
+            </form>
+          ) : hasExistingRequest ? (
             <span className="flex-1 text-center rounded-xl px-4 py-2 text-sm font-semibold bg-gray-100 text-gray-400 cursor-not-allowed">
               Requested
             </span>
