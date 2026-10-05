@@ -2234,3 +2234,70 @@ $ echo $?
 ```
 
 Clean.
+
+## Commit and push
+
+```
+$ git add .
+$ git commit -m "Add forgot password flow: request-reset page, set-new-password page, and recovery handling in the email confirm route"
+[master dac7cc1] Add forgot password flow: request-reset page, set-new-password page, and recovery handling in the email confirm route
+ 6 files changed, 305 insertions(+), 3 deletions(-)
+ create mode 100644 src/app/(auth)/forgot-password/page.tsx
+ create mode 100644 src/app/(auth)/reset-password/page.tsx
+$ git push origin master
+   d6139d3..dac7cc1  master -> master
+```
+
+Pushed as **`dac7cc1`**.
+
+---
+
+# Incoming Requests not responsive on mobile — 2026-10-05
+
+## Root cause
+
+`src/components/IncomingRequests.tsx`'s request row was a rigid
+`flex items-center justify-between` with no responsive breakpoint —
+name/skill info on the left, Decline/Accept buttons (`shrink-0`) on the
+right, both forced onto one row regardless of viewport width. On a real
+mobile width, confirmed directly (390px viewport, Chromium): the Accept
+button's right edge landed at 396px — 6px past the viewport — and
+`document.documentElement.scrollWidth > clientWidth` was `true`,
+confirming genuine horizontal overflow, not just a cosmetic squeeze.
+
+## Fix
+
+The row now stacks vertically below `sm`: `flex-col sm:flex-row`, with
+Decline/Accept splitting evenly across their own full-width row
+(`flex-1 sm:flex-initial`) instead of competing for space next to the
+name. Added `min-w-0` to the info block and `flex-wrap` to its
+badge/rep/date row so long names and multiple inline badges wrap instead
+of forcing width. Desktop layout (`sm:` and up) is unchanged — same
+single-row, space-between layout as before.
+
+## Verification performed
+
+Created a disposable incoming request with a longer requester name (a
+realistic stress case, not the shortest possible name) and loaded
+`/match` in a real Chromium page at a 390×844 viewport (iPhone-width,
+via explicit `viewport`/`hasTouch`/`isMobile` context options — WebKit
+itself isn't installed in this environment, so used Chromium directly
+rather than the `devices['iPhone 13']` preset). Before the fix:
+`scrollWidth > clientWidth` was `true`, Accept button's bounding box
+extended to x=396 (past the 390px viewport) — confirmed visually too,
+buttons squeezed hard against the edge. After the fix: no horizontal
+overflow, Accept button's box right edge at x=333, comfortably within
+the viewport, confirmed visually (name on its own line, full-width
+Decline/Accept row below). Disposable account and match deleted
+afterward.
+
+## TypeScript output
+
+```
+$ npx tsc --noEmit
+(no output)
+$ echo $?
+0
+```
+
+Clean.

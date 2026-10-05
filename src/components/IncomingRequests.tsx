@@ -44,16 +44,16 @@ export default function IncomingRequests({ requests }: { requests: IncomingMatch
       {visible.map((req) => (
         <div
           key={req.match_id}
-          className="flex items-center justify-between p-4 bg-gray-50 rounded-lg gap-4"
+          className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-gray-50 rounded-lg gap-3 sm:gap-4"
         >
-          <div>
+          <div className="min-w-0">
             <a
               href={`/profile/${req.requester_id}`}
               className="text-sm font-medium text-gray-900 hover:text-indigo-600 hover:underline"
             >
               {req.requester?.full_name ?? 'Unknown user'}
             </a>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex flex-wrap items-center gap-2 mt-1">
               {req.skills && (
                 <span className={`text-xs px-2 py-0.5 rounded-full ${tierColors[req.skills.tier]}`}>
                   {req.skills.name}
@@ -71,14 +71,14 @@ export default function IncomingRequests({ requests }: { requests: IncomingMatch
             <button
               onClick={() => handleRespond(req.match_id, 'rejected')}
               disabled={responding === req.match_id}
-              className="text-sm px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+              className="flex-1 sm:flex-initial text-sm px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100 disabled:opacity-50"
             >
               Decline
             </button>
             <button
               onClick={() => handleRespond(req.match_id, 'accepted')}
               disabled={responding === req.match_id}
-              className="text-sm px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+              className="flex-1 sm:flex-initial text-sm px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50"
             >
               {responding === req.match_id ? '...' : 'Accept'}
             </button>
